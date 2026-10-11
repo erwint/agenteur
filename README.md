@@ -16,7 +16,7 @@ Releases are built by GoReleaser through GitHub Actions. The binary's version co
 
 ```bash
 scripts/release.sh binary 0.4.0                    # tag, push, wait for the archives
-scripts/release.sh plugin 0.5.0 --requires 0.4.0   # bump both manifests, commit; then push
+scripts/release.sh plugin 0.5.0 --requires 0.4.0   # bump both manifests, commit, tag plugin-v0.5.0; then push
 ```
 
 See "Versions" in `AGENTS.md` for when each one changes.

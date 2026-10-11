@@ -21,3 +21,5 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A commit can also carry a plugin-v* tag; build the one that was pushed.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}

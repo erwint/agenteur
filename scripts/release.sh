@@ -7,11 +7,12 @@
 #
 #   scripts/release.sh plugin X.Y.Z [--requires A.B.C]
 #       Sets the plugin version in both manifests (and, with --requires,
-#       scripts/requires-coai), checks the rules, and commits. Push it yourself.
+#       scripts/requires-coai), checks the rules, commits, and tags the commit
+#       plugin-vX.Y.Z. Push both yourself.
 set -eu
 cd "$(dirname "$0")/.."
 
-usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 semver() { echo "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "release: $1 is not X.Y.Z" >&2; exit 2; }; }
 
 [ $# -ge 2 ] || usage
@@ -54,6 +55,11 @@ plugin)
     requires=$2
     semver "$requires"
   fi
+  tag="plugin-v$version"
+  if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    echo "release: $tag already exists" >&2
+    exit 1
+  fi
   for m in .claude-plugin/plugin.json .codex-plugin/plugin.json; do
     # Only the first "version" is the manifest's own.
     V="$version" perl -0pi -e 's/"version"\s*:\s*"[^"]*"/"version": "$ENV{V}"/' "$m"
@@ -62,7 +68,9 @@ plugin)
   git fetch -q --tags origin
   scripts/check-versions.sh
   git commit -q -am "Release plugin $version" -m "Plugin $version requires coai $(cat scripts/requires-coai) or newer."
-  echo "release: committed plugin $version; push with: git push origin HEAD"
+  # Plugin tags never start with v, so they don't trigger a binary release.
+  git tag -a "$tag" -m "Release plugin $version"
+  echo "release: committed and tagged plugin $version; push with: git push origin HEAD $tag"
   ;;
 *)
   usage

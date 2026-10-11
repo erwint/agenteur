@@ -58,7 +58,7 @@ Don't bump it for Go code, tests, the README, `AGENTS.md`, CI, or the developmen
 
 How to bump:
 
-- Use `scripts/release.sh plugin X.Y.Z`. It sets the version in both manifests, runs the checks and commits. Push the commit yourself.
+- Use `scripts/release.sh plugin X.Y.Z`. It sets the version in both manifests, runs the checks, commits, and tags the commit `plugin-vX.Y.Z`. Push the commit and the tag yourself.
 - Keep both manifests at the same version.
 - Never add `version` to the entry in `.claude-plugin/marketplace.json`: the manifest overrides it, so a second copy can only drift.
 - Bump once per push, not once per commit. If `git diff origin/main -- .claude-plugin/plugin.json` already shows a bump, leave it. Bump in the same commit as the plugin change, or in a follow-up commit before pushing.
@@ -81,4 +81,5 @@ Doing it the other way round would ship a plugin that requires a binary nobody c
 ### Releasing the binary
 
 - Use `scripts/release.sh binary X.Y.Z` (or tag `vX.Y.Z` and push the tag). GoReleaser builds and publishes the archives. Don't edit any file to set the binary version.
-- Don't tag a release for a plugin-only change, and don't bump the plugin for a binary-only change.
+- Don't tag a binary release for a plugin-only change, and don't bump the plugin for a binary-only change.
+- Tags: `vX.Y.Z` is a binary release and triggers GoReleaser. `plugin-vX.Y.Z` only marks a plugin release. Version stamping (`git describe --match 'v[0-9]*'`, and `GORELEASER_CURRENT_TAG` in the release workflow) ignores plugin tags.
