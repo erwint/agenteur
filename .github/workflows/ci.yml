@@ -9,9 +9,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Tags and history for scripts/check-versions.sh.
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - run: go test ./...
       - run: go vet ./...
       - run: go build ./...
+      # The base is the PR's target, or the previous tip of the pushed branch.
+      - run: scripts/check-versions.sh "${{ github.event.pull_request.base.sha || github.event.before }}"

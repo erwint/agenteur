@@ -12,12 +12,14 @@ make lint
 make build
 ```
 
-Releases are built by GoReleaser through GitHub Actions. The binary's version comes from the tag, so a release is only a tag. Push a semantic version tag to publish macOS, Linux, and Windows archives:
+Releases are built by GoReleaser through GitHub Actions. The binary's version comes from the tag, and the plugin has its own version in its manifests:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+scripts/release.sh binary 0.4.0                    # tag, push, wait for the archives
+scripts/release.sh plugin 0.5.0 --requires 0.4.0   # bump both manifests, commit; then push
 ```
+
+See "Versions" in `AGENTS.md` for when each one changes.
 
 The release workflow uses the repository's `GITHUB_TOKEN`; no personal token is required.
 
