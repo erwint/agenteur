@@ -2,13 +2,30 @@
   "name": "coai",
   "description": "Coordinate Claude Code and Codex sessions with durable tasks, messages, leases, and notifications.",
   "version": "0.2.3",
-  "author": { "name": "erwint", "url": "https://github.com/erwint" },
+  "author": {
+    "name": "erwint",
+    "url": "https://github.com/erwint"
+  },
   "license": "MIT",
   "repository": "https://github.com/erwint/coai",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": {
+    "coai": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/run-codex.sh",
+      "startup_timeout_sec": 60
+    }
+  },
   "interface": {
     "displayName": "CoAI Agent Coordination",
     "shortDescription": "Coordinate Claude and Codex sessions",
-    "category": "Productivity"
+    "category": "Productivity",
+    "longDescription": "Coordinate shared work through durable tasks and messages, with verified Codex app-server result delivery.",
+    "developerName": "erwint",
+    "defaultPrompt": [
+      "Join a shared CoAI coordination session."
+    ],
+    "capabilities": [
+      "Read",
+      "Write"
+    ]
   }
 }

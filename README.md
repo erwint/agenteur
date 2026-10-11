@@ -48,7 +48,7 @@ cd coai
 ./scripts/build-plugin.sh
 ```
 
-Claude Code loads the included `.mcp.json` when the plugin is installed. Both clients share the same coordination database; set `COAI_STATE` explicitly when sessions need a non-default location.
+Claude Code loads `.claude-mcp.json` through its plugin manifest. Codex loads the MCP declaration in `.codex-plugin/plugin.json`; its launcher starts the managed app-server daemon and verifies its handshake before exposing MCP tools. Both clients share the same coordination database; set `COAI_STATE` explicitly when sessions need a non-default location.
 
 ## Build and configure
 
@@ -62,10 +62,24 @@ Set `COAI_STATE` to share a database explicitly (the default is `$XDG_CONFIG_HOM
 
 Agents should first call `join_session` with a common session name and unique agent ID. Codex agents should then call `register_codex_thread` with their app-server `thread_id` and optional socket path. Use `create_task`, `send_message`, `ack_message`, `await_task`, `complete_task`, `claim_files`, `release_files`, and `list_session` to coordinate. `await_task` is cancellation-aware and uses durable polling, so it works across separately spawned MCP processes. When a client supplies an MCP progress token, it also receives a heartbeat before the durable wait.
 
-## Claude Code channel notifications
+## Event delivery
 
-The server declares Claude's experimental `claude/channel` capability and emits `notifications/claude/channel` for messages addressed to the joined agent. The Go SDK is temporarily pinned to the unreleased custom-notifications implementation from [PR #1146](https://github.com/modelcontextprotocol/go-sdk/pull/1146); remove the `replace` directive in `go.mod` when that API is released. During the research preview, run Claude with `claude --dangerously-load-development-channels server:coai`; channels require organization enablement.
+Agents are woken for three kinds of events: a message addressed to them, a task assigned to them, and the outcome (completed, failed, cancelled) of a task they created. Each event is delivered once. The `notified` columns in the database record delivery across all processes, and an event that fails to deliver goes back into the queue. Events are one line each and describe themselves, e.g. `coai message <id> in session "demo" from codex-1: "please review main.go" (...)`. The server's MCP instructions tell agents how to respond.
+
+**Claude Code.** Run the plugin's `join` skill (`/coai:join [session] [agent-id]`). Invoking it starts the plugin monitor `coai watch`. Claude Code turns each line the monitor prints into a notification that wakes the session, with no `--channels` flag. The monitor and the MCP server share the session's `CLAUDE_CODE_SESSION_ID`, which `join_session` records so the monitor finds its agent. Monitors run only in interactive sessions. While the monitor runs, Claude Code lists it as background work when you exit.
 
 ## Codex app-server
 
-For result injection, run `codex app-server daemon start`. Register the thread with `register_codex_thread`; when a task is completed for that agent, coai connects to `$CODEX_HOME/app-server-control/app-server-control.sock` (or the registered socket) and calls `thread/inject_items`. If the app-server is unavailable, the durable MCP result remains available through `await_task` and `list_session`.
+The Codex plugin runs `scripts/run-codex.sh`, which starts the managed daemon with `codex app-server daemon start` and verifies the app-server handshake. Codex must already have its managed standalone installation; CoAI does not install or replace the Codex executable. If startup fails, the plugin reports the error instead of claiming push delivery is active. A custom `COAI_CODEX_SOCKET` skips daemon startup and verifies that socket instead.
+
+Call `join_session` with `kind: "codex"`. CoAI registers `CODEX_THREAD_ID` automatically when inherited from the client; otherwise supply `thread_id` explicitly or use `register_codex_thread`. Registration checks that the thread is readable through the app-server. Check `codex_registered` and `codex_error` in the join result. Installing a plugin alone does not identify which shared coordination session an agent should join.
+
+The Codex agent's own CoAI process delivers its events to the registered thread with `thread/queue/add`. An idle thread starts a turn at once, and a busy one runs the event after its current turn. Ephemeral threads have no queue, so events are appended there with `thread/inject_items` and wait for the next turn. If the app-server is unreachable, delivery is retried with backoff, and the data stays available through `inbox`, `await_task`, and `list_session`.
+
+To verify a connection without sending a message:
+
+```bash
+./scripts/run.sh --check-codex
+```
+
+For local plugin development, run `./scripts/build-plugin.sh` before installing the plugin directory so it includes the updated `bin/coai`. The release downloader is pinned to the published release; it does not download uncommitted development changes.

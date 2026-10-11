@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-root=${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
+root=${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}}
 bin="$root/bin/coai"
 if [ ! -x "$bin" ]; then
   mkdir -p "$root/bin"

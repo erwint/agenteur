@@ -26,7 +26,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
-
-// Temporary pin to the upstream custom-notifications implementation (PR #1146).
-// Remove this replace once the change is released by modelcontextprotocol/go-sdk.
-replace github.com/modelcontextprotocol/go-sdk => github.com/delaneyj/mcp-go-sdk v1.7.1-0.20260805143609-6863d59cb9ed

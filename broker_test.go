@@ -100,10 +100,13 @@ func TestInjectCodex(t *testing.T) {
 			return
 		}
 		defer c.Close(websocket.StatusNormalClosure, "")
-		for i := 0; i < 2; i++ {
+		for i := 0; i < 3; i++ {
 			_, data, _ := c.Read(r.Context())
 			var m map[string]any
 			_ = json.Unmarshal(data, &m)
+			if m["method"] == "initialized" {
+				continue
+			}
 			b, _ := json.Marshal(map[string]any{"id": m["id"], "result": map[string]any{}})
 			_ = c.Write(r.Context(), websocket.MessageText, b)
 		}

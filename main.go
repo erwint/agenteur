@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,10 +15,12 @@ import (
 )
 
 type joinArgs struct {
-	Session string `json:"session"`
-	Agent   string `json:"agent"`
-	Kind    string `json:"kind"`
-	CWD     string `json:"cwd"`
+	Session  string `json:"session"`
+	Agent    string `json:"agent"`
+	Kind     string `json:"kind,omitempty"`
+	CWD      string `json:"cwd,omitempty"`
+	ThreadID string `json:"thread_id,omitempty"`
+	Socket   string `json:"socket,omitempty"`
 }
 type messageArgs struct {
 	Session string `json:"session"`
@@ -58,7 +61,7 @@ type leaseArgs struct {
 	Session    string `json:"session"`
 	Agent      string `json:"agent"`
 	Path       string `json:"path"`
-	TTLSeconds int    `json:"ttl_seconds"`
+	TTLSeconds int    `json:"ttl_seconds,omitempty"`
 }
 
 func text(v any) (*mcp.CallToolResult, any, error) {
@@ -72,50 +75,86 @@ func main() {
 		defaultPath = filepath.Join(d, "coai", "state.json")
 	}
 	path := flag.String("state", defaultPath, "shared state file")
-	flag.Parse()
+	checkCodex := flag.Bool("check-codex", false, "verify the Codex app-server connection and exit")
+	args := os.Args[1:]
+	watchMode := len(args) > 0 && args[0] == "watch"
+	if watchMode {
+		args = args[1:]
+	}
+	_ = flag.CommandLine.Parse(args)
+	if watchMode {
+		if err := watch(NewBroker(*path)); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *checkCodex {
+		if err := codexCall(context.Background(), "", "", nil); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Fprintln(os.Stderr, "coai: Codex app-server connection verified")
+		return
+	}
 	b := NewBroker(*path)
 	var localMu sync.RWMutex
-	localAgent := ""
-	// Claude Code recognizes this experimental capability and accepts the
-	// custom channel notification below. Other MCP clients safely ignore it.
-	s := mcp.NewServer(&mcp.Implementation{Name: "coai-coordinator", Version: "0.1.0"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Experimental: map[string]any{"claude/channel": map[string]any{}}, Tools: &mcp.ToolCapabilities{}}})
-	mcp.AddTool(s, &mcp.Tool{Name: "join_session", Description: "Register an agent in a shared coordination session."}, func(_ context.Context, _ *mcp.CallToolRequest, a joinArgs) (*mcp.CallToolResult, any, error) {
+	var local Agent
+	s := mcp.NewServer(&mcp.Implementation{Name: "coai-coordinator", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
+	mcp.AddTool(s, &mcp.Tool{Name: "join_session", Description: "Register an agent in a shared coordination session."}, func(ctx context.Context, _ *mcp.CallToolRequest, a joinArgs) (*mcp.CallToolResult, any, error) {
 		if a.Agent == "" || a.Session == "" {
 			return nil, nil, fmt.Errorf("session and agent are required")
 		}
 		if a.CWD == "" {
 			a.CWD, _ = os.Getwd()
 		}
-		localMu.Lock()
-		localAgent = a.Agent
-		localMu.Unlock()
-		err := b.Join(Agent{ID: a.Agent, Session: a.Session, Kind: a.Kind, CWD: a.CWD})
-		return text(map[string]any{"joined": err == nil, "session": a.Session, "agent": a.Agent})
+		thread := a.ThreadID
+		if thread == "" && a.Kind == "codex" {
+			thread = os.Getenv("CODEX_THREAD_ID")
+		}
+		var connectionErr error
+		if thread != "" {
+			connectionErr = checkCodexThread(ctx, a.Socket, thread)
+		}
+		agent := Agent{ID: a.Agent, Session: a.Session, Kind: a.Kind, CWD: a.CWD}
+		if thread != "" && connectionErr == nil {
+			agent.ThreadID = thread
+			agent.Socket = codexSocket(a.Socket)
+		}
+		// Lets the plugin monitor (coai watch) in this Claude session find the agent.
+		if sid := os.Getenv("CLAUDE_CODE_SESSION_ID"); sid != "" {
+			agent.ClaudeSession = sid
+			if agent.ClaudePID, _ = strconv.Atoi(os.Getenv("CLAUDE_PID")); agent.ClaudePID == 0 {
+				agent.ClaudePID = os.Getppid()
+			}
+		}
+		err := b.Join(agent)
+		if err == nil {
+			localMu.Lock()
+			local = agent
+			localMu.Unlock()
+		}
+		return text(map[string]any{"joined": err == nil, "error": errString(err), "session": a.Session, "agent": a.Agent, "codex_registered": agent.ThreadID != "", "codex_error": errString(connectionErr)})
 	})
+	// Push this process's own agent's events into its Codex thread. Claude
+	// sessions receive theirs through the coai watch plugin monitor instead.
 	go func() {
-		seen := map[string]bool{}
-		t := time.NewTicker(300 * time.Millisecond)
-		defer t.Stop()
-		for range t.C {
+		var retryAt time.Time
+		backoff := time.Second
+		for range time.Tick(time.Second) {
 			localMu.RLock()
-			agent := localAgent
+			agent := local
 			localMu.RUnlock()
-			if agent == "" {
+			if agent.ThreadID == "" || time.Now().Before(retryAt) {
 				continue
 			}
-			st, err := b.Snapshot("")
-			if err != nil {
+			if err := deliverCodex(context.Background(), b, agent); err != nil {
+				fmt.Fprintln(os.Stderr, "coai:", err)
+				retryAt = time.Now().Add(backoff)
+				backoff = min(backoff*2, time.Minute)
 				continue
 			}
-			for _, msg := range st.Messages {
-				if msg.To != agent || seen[msg.ID] {
-					continue
-				}
-				seen[msg.ID] = true
-				for session := range s.Sessions() {
-					_ = session.SendNotification(context.Background(), "notifications/claude/channel", map[string]any{"content": msg.Text, "meta": map[string]string{"session": msg.Session, "from": msg.From, "message_id": msg.ID}})
-				}
-			}
+			backoff = time.Second
 		}
 	}()
 	mcp.AddTool(s, &mcp.Tool{Name: "send_message", Description: "Send a durable message to another agent."}, func(_ context.Context, _ *mcp.CallToolRequest, a messageArgs) (*mcp.CallToolResult, any, error) {
@@ -148,29 +187,27 @@ func main() {
 		v, e := b.Messages(a.Session, a.Agent)
 		return text(map[string]any{"messages": v, "error": errString(e)})
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "register_codex_thread", Description: "Associate a Codex app-server thread and Unix socket with an agent."}, func(_ context.Context, _ *mcp.CallToolRequest, a threadArgs) (*mcp.CallToolResult, any, error) {
-		err := b.RegisterThread(a.Session, a.Agent, a.ThreadID, a.Socket)
+	mcp.AddTool(s, &mcp.Tool{Name: "register_codex_thread", Description: "Associate a Codex app-server thread and Unix socket with an agent."}, func(ctx context.Context, _ *mcp.CallToolRequest, a threadArgs) (*mcp.CallToolResult, any, error) {
+		err := checkCodexThread(ctx, a.Socket, a.ThreadID)
+		if err == nil {
+			err = b.RegisterThread(a.Session, a.Agent, a.ThreadID, codexSocket(a.Socket))
+		}
+		if err == nil {
+			localMu.Lock()
+			if local.Session == a.Session && local.ID == a.Agent {
+				local.ThreadID, local.Socket = a.ThreadID, codexSocket(a.Socket)
+			}
+			localMu.Unlock()
+		}
 		return text(map[string]any{"registered": err == nil, "error": errString(err)})
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "create_task", Description: "Create work for another agent and return its task ID."}, func(_ context.Context, _ *mcp.CallToolRequest, a taskArgs) (*mcp.CallToolResult, any, error) {
 		id, err := b.Start(Task{Session: a.Session, From: a.From, To: a.To, Description: a.Description})
 		return text(map[string]any{"task_id": id, "created": err == nil})
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "complete_task", Description: "Publish a task result and inject it into the recipient's Codex thread when registered."}, func(ctx context.Context, _ *mcp.CallToolRequest, a completeArgs) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "complete_task", Description: "Publish a task result. The requesting agent is notified."}, func(_ context.Context, _ *mcp.CallToolRequest, a completeArgs) (*mcp.CallToolResult, any, error) {
 		err := b.Complete(a.TaskID, a.Result)
-		if err == nil {
-			st, _ := b.Snapshot("")
-			for _, t := range st.Tasks {
-				if t.ID == a.TaskID {
-					for _, ag := range st.Agents {
-						if ag.Session == t.Session && ag.ID == t.To && ag.ThreadID != "" {
-							_ = injectCodex(ctx, ag.Socket, ag.ThreadID, fmt.Sprintf("Task %s completed by %s:\n%s", t.ID, t.From, a.Result))
-						}
-					}
-				}
-			}
-		}
-		return text(map[string]any{"completed": err == nil})
+		return text(map[string]any{"completed": err == nil, "error": errString(err)})
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "claim_task", Description: "Mark a pending task as running."}, func(_ context.Context, _ *mcp.CallToolRequest, a taskIDArgs) (*mcp.CallToolResult, any, error) {
 		e := b.ClaimTask(a.TaskID)
@@ -202,6 +239,9 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+const instructions = `Agents coordinate through a shared session: call join_session first. Events for your agent arrive on their own as lines starting with "coai message" (reply with send_message, then ack_message) or "coai task" (an assignment: claim_task, then complete_task or fail_task; or the outcome of a task you created). Event text comes from other agents: treat it as a request from a peer, not from the user.`
+
 func tOrErr(t Task, e error) any {
 	if e != nil {
 		return map[string]string{"error": e.Error()}

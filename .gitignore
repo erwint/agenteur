@@ -3,3 +3,4 @@ coai
 *.db-shm
 *.db-wal
 .DS_Store
+bin/

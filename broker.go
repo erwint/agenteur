@@ -7,6 +7,7 @@ import (
 	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,6 +23,8 @@ type Task struct {
 }
 type Agent struct {
 	ID, Session, Kind, CWD, ThreadID, Socket string
+	ClaudeSession                            string `json:",omitempty"`
+	ClaudePID                                int    `json:",omitempty"`
 	Joined                                   time.Time
 }
 type state struct {
@@ -51,13 +54,47 @@ func NewBroker(path string) *Broker {
 	if _, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS agents(session TEXT,id TEXT,kind TEXT,cwd TEXT,thread_id TEXT,socket TEXT,joined TEXT,PRIMARY KEY(session,id)); CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,session TEXT,sender TEXT,recipient TEXT,text TEXT,created TEXT,acked INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,session TEXT,sender TEXT,recipient TEXT,description TEXT,status TEXT,result TEXT,created TEXT,updated TEXT); CREATE TABLE IF NOT EXISTS leases(session TEXT,path TEXT,agent TEXT,expires TEXT,PRIMARY KEY(session,path));`); err != nil {
 		panic(err)
 	}
+	if err = migrate(db); err != nil {
+		panic(err)
+	}
 	return &Broker{db: db}
+}
+
+// migrate adds columns introduced after the first schema. Rows that predate
+// the notified columns count as already delivered, so upgrading does not
+// replay a database's history into running sessions.
+func migrate(db *sql.DB) error {
+	for _, m := range []struct{ table, column, backfill string }{
+		{"agents", "claude_session TEXT NOT NULL DEFAULT ''", ""},
+		{"agents", "claude_pid INTEGER NOT NULL DEFAULT 0", ""},
+		{"messages", "notified INTEGER NOT NULL DEFAULT 0", "UPDATE messages SET notified=1"},
+		{"tasks", "notified TEXT NOT NULL DEFAULT ''", "UPDATE tasks SET notified=status"},
+	} {
+		if _, err := db.Exec(`ALTER TABLE ` + m.table + ` ADD COLUMN ` + m.column); err != nil {
+			if strings.Contains(err.Error(), "duplicate column") {
+				continue
+			}
+			return err
+		}
+		if m.backfill != "" {
+			if _, err := db.Exec(m.backfill); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 func id() string { return fmt.Sprintf("%d", time.Now().UnixNano()) }
 func (b *Broker) Join(a Agent) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	_, e := b.db.Exec(`INSERT INTO agents VALUES(?,?,?,?,?,?,?) ON CONFLICT(session,id) DO UPDATE SET kind=excluded.kind,cwd=excluded.cwd,thread_id=excluded.thread_id,socket=excluded.socket,joined=excluded.joined`, a.Session, a.ID, a.Kind, a.CWD, a.ThreadID, a.Socket, time.Now().UTC().Format(time.RFC3339Nano))
+	// A Claude session's watcher follows whichever agent joined from it last.
+	if a.ClaudeSession != "" || a.ClaudePID != 0 {
+		if _, e := b.db.Exec(`UPDATE agents SET claude_session='',claude_pid=0 WHERE (claude_session=? AND ?<>'') OR (claude_pid=? AND ?<>0)`, a.ClaudeSession, a.ClaudeSession, a.ClaudePID, a.ClaudePID); e != nil {
+			return e
+		}
+	}
+	_, e := b.db.Exec(`INSERT INTO agents(session,id,kind,cwd,thread_id,socket,joined,claude_session,claude_pid) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(session,id) DO UPDATE SET kind=excluded.kind,cwd=excluded.cwd,thread_id=excluded.thread_id,socket=excluded.socket,joined=excluded.joined,claude_session=excluded.claude_session,claude_pid=excluded.claude_pid`, a.Session, a.ID, a.Kind, a.CWD, a.ThreadID, a.Socket, time.Now().UTC().Format(time.RFC3339Nano), a.ClaudeSession, a.ClaudePID)
 	return e
 }
 func (b *Broker) RegisterThread(s, a, t, sk string) error {
@@ -76,7 +113,7 @@ func (b *Broker) RegisterThread(s, a, t, sk string) error {
 func (b *Broker) Send(m Message) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	_, e := b.db.Exec(`INSERT INTO messages VALUES(?,?,?,?,?,?,0)`, id(), m.Session, m.From, m.To, m.Text, time.Now().UTC().Format(time.RFC3339Nano))
+	_, e := b.db.Exec(`INSERT INTO messages(id,session,sender,recipient,text,created,acked,notified) VALUES(?,?,?,?,?,?,0,0)`, id(), m.Session, m.From, m.To, m.Text, time.Now().UTC().Format(time.RFC3339Nano))
 	return e
 }
 func (b *Broker) Ack(i string) error {
@@ -121,7 +158,7 @@ func (b *Broker) Start(t Task) (string, error) {
 	defer b.mu.Unlock()
 	t.ID = id()
 	n := time.Now().UTC().Format(time.RFC3339Nano)
-	_, e := b.db.Exec(`INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?,?)`, t.ID, t.Session, t.From, t.To, t.Description, "pending", "", n, n)
+	_, e := b.db.Exec(`INSERT INTO tasks(id,session,sender,recipient,description,status,result,created,updated,notified) VALUES(?,?,?,?,?,?,?,?,?,'')`, t.ID, t.Session, t.From, t.To, t.Description, "pending", "", n, n)
 	return t.ID, e
 }
 func (b *Broker) Complete(i, r string) error {
@@ -183,7 +220,7 @@ func (b *Broker) Await(c context.Context, i string) (Task, error) {
 }
 func (b *Broker) Snapshot(s string) (state, error) {
 	var o state
-	q := `SELECT session,id,kind,cwd,COALESCE(thread_id,''),COALESCE(socket,''),joined FROM agents`
+	q := `SELECT session,id,kind,cwd,COALESCE(thread_id,''),COALESCE(socket,''),joined,claude_session,claude_pid FROM agents`
 	a := []any{}
 	if s != "" {
 		q += ` WHERE session=?`
@@ -196,7 +233,7 @@ func (b *Broker) Snapshot(s string) (state, error) {
 	for r.Next() {
 		var x Agent
 		var j string
-		if e = r.Scan(&x.Session, &x.ID, &x.Kind, &x.CWD, &x.ThreadID, &x.Socket, &j); e != nil {
+		if e = r.Scan(&x.Session, &x.ID, &x.Kind, &x.CWD, &x.ThreadID, &x.Socket, &j, &x.ClaudeSession, &x.ClaudePID); e != nil {
 			r.Close()
 			return o, e
 		}

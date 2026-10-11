@@ -2,5 +2,18 @@
   "name": "coai",
   "description": "Coordinate Claude Code and Codex sessions with durable tasks, messages, leases, and notifications.",
   "version": "0.2.3",
-  "author": { "name": "erwint" }
+  "author": {
+    "name": "erwint"
+  },
+  "mcpServers": "./.claude-mcp.json",
+  "experimental": {
+    "monitors": [
+      {
+        "name": "events",
+        "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/run.sh watch",
+        "description": "coai messages and task updates for this session's agent",
+        "when": "on-skill-invoke:join"
+      }
+    ]
+  }
 }
