@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,17 +78,46 @@ func main() {
 	path := flag.String("state", defaultPath, "shared state file")
 	checkCodex := flag.Bool("check-codex", false, "verify the Codex app-server connection and exit")
 	args := os.Args[1:]
-	watchMode := len(args) > 0 && args[0] == "watch"
-	if watchMode {
-		args = args[1:]
+	command := ""
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		command, args = args[0], args[1:]
 	}
 	_ = flag.CommandLine.Parse(args)
-	if watchMode {
+	switch command {
+	case "":
+	case "version":
+		fmt.Println(version)
+		return
+	case "update":
+		ctx := context.Background()
+		tag, err := latestRelease(ctx)
+		if err == nil && newer(version, tag) {
+			var exe string
+			if exe, err = os.Executable(); err == nil {
+				if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+					exe = resolved
+				}
+				if err = applyRelease(ctx, tag, exe); err == nil {
+					fmt.Printf("updated %s from %s to %s\n", exe, version, tag)
+				}
+			}
+		} else if err == nil {
+			fmt.Printf("coai %s; latest release is %s\n", version, tag)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	case "watch":
 		if err := watch(NewBroker(*path)); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		return
+	default:
+		fmt.Fprintf(os.Stderr, "coai: unknown command %q (commands: watch, version, update)\n", command)
+		os.Exit(2)
 	}
 	if *checkCodex {
 		if err := codexCall(context.Background(), "", "", nil); err != nil {
@@ -98,9 +128,10 @@ func main() {
 		return
 	}
 	b := NewBroker(*path)
+	go updateIfStale(context.Background(), filepath.Join(filepath.Dir(*path), ".last-update-check"))
 	var localMu sync.RWMutex
 	var local Agent
-	s := mcp.NewServer(&mcp.Implementation{Name: "coai-coordinator", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
+	s := mcp.NewServer(&mcp.Implementation{Name: "coai-coordinator", Version: version}, &mcp.ServerOptions{Instructions: instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
 	mcp.AddTool(s, &mcp.Tool{Name: "join_session", Description: "Register an agent in a shared coordination session."}, func(ctx context.Context, _ *mcp.CallToolRequest, a joinArgs) (*mcp.CallToolResult, any, error) {
 		if a.Agent == "" || a.Session == "" {
 			return nil, nil, fmt.Errorf("session and agent are required")

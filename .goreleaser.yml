@@ -5,14 +5,17 @@ builds:
     main: .
     binary: coai
     flags: ["-trimpath"]
-    ldflags: ["-s -w"]
+    ldflags: ["-s -w -X main.version={{.Version}}"]
     goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
     ignore:
       - goos: windows
         goarch: arm64
 archives:
-  - formats: [tar.gz]
+  # No version in the name: scripts/run.sh and the updater fetch
+  # releases/latest/download/coai_<os>_<arch>.tar.gz without knowing the tag.
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]

@@ -12,7 +12,7 @@ make lint
 make build
 ```
 
-Releases are built by GoReleaser through GitHub Actions. Push a semantic version tag to publish macOS, Linux, and Windows archives:
+Releases are built by GoReleaser through GitHub Actions. The binary's version comes from the tag, so a release is only a tag. Push a semantic version tag to publish macOS, Linux, and Windows archives:
 
 ```bash
 git tag v0.1.0
@@ -30,11 +30,11 @@ Claude Code can install the plugin directly from its marketplace:
 /plugin install coai@erwint-tools
 ```
 
-The plugin downloads the matching release binary on first launch. No repository clone or local Go toolchain is required.
+On first launch the plugin installs the latest release binary to `~/.local/bin/coai`. The Claude and Codex plugins share that binary. After that, coai checks for a newer release at most once a day and replaces itself, so new sessions use the new version; set `COAI_NO_UPDATE=1` to turn this off, or run `coai update` by hand. No repository clone or local Go toolchain is required.
 
 For Codex CLI, install the release binary and register it as an MCP server:
 
-Download the archive for your operating system and architecture from the [v0.2.3 release](https://github.com/erwint/coai/releases/tag/v0.2.3), place the `coai` binary on your `PATH`, then register it:
+Download the archive for your operating system and architecture from the [latest release](https://github.com/erwint/coai/releases/latest), place the `coai` binary on your `PATH`, then register it:
 
 ```bash
 codex mcp add coai -- coai

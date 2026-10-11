@@ -73,7 +73,7 @@ func codexCall(ctx context.Context, socket, method string, params any) error {
 		}
 	}
 	if err = send(map[string]any{"id": 1, "method": "initialize", "params": map[string]any{
-		"clientInfo":   map[string]string{"name": "coai-coordinator", "version": "0.2.3"},
+		"clientInfo":   map[string]string{"name": "coai-coordinator", "version": version},
 		"capabilities": map[string]bool{"experimentalApi": true},
 	}}); err != nil {
 		return err
