@@ -60,12 +60,13 @@ plugin)
     echo "release: $tag already exists" >&2
     exit 1
   fi
+  # Fetch first: a network failure must not leave edited manifests behind.
+  git fetch -q --tags origin
   for m in .claude-plugin/plugin.json .codex-plugin/plugin.json; do
     # Only the first "version" is the manifest's own.
     V="$version" perl -0pi -e 's/"version"\s*:\s*"[^"]*"/"version": "$ENV{V}"/' "$m"
   done
   [ -z "$requires" ] || echo "$requires" > scripts/requires-coai
-  git fetch -q --tags origin
   scripts/check-versions.sh
   git commit -q -am "Release plugin $version" -m "Plugin $version requires coai $(cat scripts/requires-coai) or newer."
   # Plugin tags never start with v, so they don't trigger a binary release.
