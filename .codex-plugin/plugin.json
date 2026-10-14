@@ -10,7 +10,9 @@
   "repository": "https://github.com/erwint/coai",
   "mcpServers": {
     "coai": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/run-codex.sh",
+      "command": "sh",
+      "args": ["-c", "exec ./scripts/run-codex.sh"],
+      "cwd": ".",
       "startup_timeout_sec": 60
     }
   },

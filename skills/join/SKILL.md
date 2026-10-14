@@ -7,7 +7,7 @@ argument-hint: "[session] [agent-id]"
 Join the coai session for this conversation.
 
 1. Pick the session name and agent ID: use the arguments when given (session first, then agent ID). Otherwise ask the user for the session name, and use a short unique agent ID such as `claude-<project>` or `codex-<project>`.
-2. Call the coai `join_session` tool with `session`, `agent`, and `kind`: `"claude"` in Claude Code, `"codex"` in Codex.
+2. Call the coai `join_session` tool with `session`, `agent`, `cwd` (the directory you are working in), and `kind`: `"claude"` in Claude Code, `"codex"` in Codex.
 3. In Codex, check that the result has `codex_registered: true`. If not, run `echo "$CODEX_THREAD_ID"` in the shell and call `register_codex_thread` with that `thread_id` and the same `agent`. If that also fails, tell the user the `codex_error`: events will not arrive, so they must check `inbox` by hand.
 4. Report the session and agent ID you joined under so the user can share them with the other agents.
 
