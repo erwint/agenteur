@@ -1,7 +1,7 @@
 {
   "name": "coai",
   "description": "Coordinate Claude Code and Codex sessions with durable tasks, messages, leases, and notifications.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": {
     "name": "erwint"
   },
