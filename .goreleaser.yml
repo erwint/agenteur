@@ -4,6 +4,9 @@ builds:
   - id: coai
     main: .
     binary: coai
+    # Static, libc-free binaries: the native linux/amd64 build otherwise links
+    # the runner's glibc and fails on older distros. SQLite is pure Go.
+    env: [CGO_ENABLED=0]
     flags: ["-trimpath"]
     ldflags: ["-s -w -X main.version={{.Version}}"]
     goos: [darwin, linux, windows]

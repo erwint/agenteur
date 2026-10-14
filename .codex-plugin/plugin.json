@@ -11,7 +11,7 @@
   "mcpServers": {
     "coai": {
       "command": "sh",
-      "args": ["-c", "exec ./scripts/run-codex.sh"],
+      "args": ["-c", "for r in \"${PLUGIN_ROOT:-.}\" . ..; do [ -f \"$r/scripts/run-codex.sh\" ] && exec sh \"$r/scripts/run-codex.sh\"; done; echo \"coai: scripts/run-codex.sh not found from $PWD\" >&2; exit 1"],
       "cwd": ".",
       "startup_timeout_sec": 60
     }

@@ -14,7 +14,7 @@ fi
 # Another coai on PATH is not used: a pre-0.3 release lacks the watch command.
 dir="${HOME}/.local/bin"
 
-if [ ! -x "$dir/coai" ]; then
+install() {
   os=$(uname -s | tr '[:upper:]' '[:lower:]')
   case "$os" in darwin|linux) ;; *) echo "coai: unsupported operating system: $os" >&2; exit 1 ;; esac
   arch=$(uname -m)
@@ -29,6 +29,12 @@ if [ ! -x "$dir/coai" ]; then
   echo "coai: installed $("$dir/coai" version) to $dir/coai" >&2
   trap - EXIT
   rm -rf "$tmp"
+}
+
+# Install on first use, and replace a binary that cannot run at all (such as
+# the dynamically linked v0.3.0 on an older glibc), since it cannot update itself.
+if [ ! -x "$dir/coai" ] || ! "$dir/coai" version >/dev/null 2>&1; then
+  install
 fi
 
 # The plugin may rely on binary features newer than the installed coai, which
