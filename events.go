@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"time"
 )
 
 // Event is something an agent should be woken for: a message addressed to
@@ -124,4 +125,18 @@ func (b *Broker) ClaudeAgents(sessionID string, pid int) ([]Agent, error) {
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// WatcherSeen records that coai watch is running for a Claude session.
+func (b *Broker) WatcherSeen(sessionID string, pid int) error {
+	_, err := b.db.Exec(`INSERT INTO watchers(claude_session,claude_pid,seen) VALUES(?,?,?) ON CONFLICT(claude_session,claude_pid) DO UPDATE SET seen=excluded.seen`, sessionID, pid, time.Now().Unix())
+	return err
+}
+
+// Watching reports whether coai watch ran for a Claude session within the
+// last few seconds. Without it, the session's events are never shown.
+func (b *Broker) Watching(sessionID string, pid int) (bool, error) {
+	var n int
+	err := b.db.QueryRow(`SELECT count(*) FROM watchers WHERE ((claude_session=? AND ?<>'') OR (claude_pid=? AND ?<>0)) AND seen>=?`, sessionID, sessionID, pid, pid, time.Now().Add(-5*time.Second).Unix()).Scan(&n)
+	return n > 0, err
 }

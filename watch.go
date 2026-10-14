@@ -41,6 +41,10 @@ func isWriteErr(err error) bool {
 }
 
 func watchOnce(b *Broker, sid string, pid int, w io.Writer) error {
+	// Lets join_session tell whether this session will see its events.
+	if err := b.WatcherSeen(sid, pid); err != nil {
+		return err
+	}
 	agents, err := b.ClaudeAgents(sid, pid)
 	if err != nil {
 		return err

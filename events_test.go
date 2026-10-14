@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"errors"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -146,5 +147,21 @@ func TestWatchPrintsEventLines(t *testing.T) {
 	out.Reset()
 	if err := watchOnce(b, "sid", 0, &out); err != nil || out.Len() != 0 {
 		t.Fatalf("redelivered: %q %v", out.String(), err)
+	}
+}
+
+func TestJoinSeesRunningWatcher(t *testing.T) {
+	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
+	if ok, _ := b.Watching("sess", 42); ok {
+		t.Fatal("watching before any watcher ran")
+	}
+	if err := watchOnce(b, "", 42, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := b.Watching("sess", 42); !ok {
+		t.Fatal("watcher for the same Claude process not seen")
+	}
+	if ok, _ := b.Watching("other", 7); ok {
+		t.Fatal("another Claude session counted as watched")
 	}
 }

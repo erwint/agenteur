@@ -51,7 +51,7 @@ func NewBroker(path string) *Broker {
 		panic(err)
 	}
 	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS agents(session TEXT,id TEXT,kind TEXT,cwd TEXT,thread_id TEXT,socket TEXT,joined TEXT,PRIMARY KEY(session,id)); CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,session TEXT,sender TEXT,recipient TEXT,text TEXT,created TEXT,acked INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,session TEXT,sender TEXT,recipient TEXT,description TEXT,status TEXT,result TEXT,created TEXT,updated TEXT); CREATE TABLE IF NOT EXISTS leases(session TEXT,path TEXT,agent TEXT,expires TEXT,PRIMARY KEY(session,path));`); err != nil {
+	if _, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS agents(session TEXT,id TEXT,kind TEXT,cwd TEXT,thread_id TEXT,socket TEXT,joined TEXT,PRIMARY KEY(session,id)); CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,session TEXT,sender TEXT,recipient TEXT,text TEXT,created TEXT,acked INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,session TEXT,sender TEXT,recipient TEXT,description TEXT,status TEXT,result TEXT,created TEXT,updated TEXT); CREATE TABLE IF NOT EXISTS leases(session TEXT,path TEXT,agent TEXT,expires TEXT,PRIMARY KEY(session,path)); CREATE TABLE IF NOT EXISTS watchers(claude_session TEXT,claude_pid INTEGER,seen INTEGER,PRIMARY KEY(claude_session,claude_pid));`); err != nil {
 		panic(err)
 	}
 	if err = migrate(db); err != nil {
