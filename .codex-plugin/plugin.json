@@ -13,6 +13,7 @@
       "command": "sh",
       "args": ["-c", "for r in \"${PLUGIN_ROOT:-.}\" . ..; do [ -f \"$r/scripts/run-codex.sh\" ] && exec sh \"$r/scripts/run-codex.sh\"; done; echo \"coai: scripts/run-codex.sh not found from $PWD\" >&2; exit 1"],
       "cwd": ".",
+      "env_vars": ["COAI_STATE", "COAI_CODEX_SOCKET", "COAI_NO_UPDATE", "CODEX_HOME", "XDG_CONFIG_HOME"],
       "startup_timeout_sec": 60
     }
   },
