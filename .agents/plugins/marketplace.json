@@ -1,0 +1,12 @@
+{
+  "name": "erwint-tools",
+  "interface": { "displayName": "erwint tools" },
+  "plugins": [
+    {
+      "name": "coai",
+      "source": { "source": "local", "path": "./" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

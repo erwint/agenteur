@@ -31,9 +31,17 @@ codex=$(manifest_version .codex-plugin/plugin.json)
 [ -n "$claude" ] || error ".claude-plugin/plugin.json has no version"
 [ "$claude" = "$codex" ] || error "plugin versions differ: Claude $claude, Codex $codex"
 
-if grep -q '"version"' .claude-plugin/marketplace.json; then
-  error ".claude-plugin/marketplace.json sets a version; the manifest's is the only one"
-fi
+for m in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
+  if grep -q '"version"' "$m"; then
+    error "$m sets a version; the manifests' is the only one"
+  fi
+done
+
+# Users install coai@erwint-tools in either client.
+for m in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
+  name=$(perl -ne 'if (/"name"\s*:\s*"([^"]*)"/) { print $1; exit }' "$m")
+  [ "$name" = erwint-tools ] || error "$m names the marketplace $name, not erwint-tools"
+done
 
 # A plugin must never require a binary nobody can download yet.
 required=$(cat scripts/requires-coai)

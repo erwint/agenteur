@@ -25,32 +25,38 @@ The release workflow uses the repository's `GITHUB_TOKEN`; no personal token is 
 
 ## Install as a plugin
 
-Claude Code can install the plugin directly from its marketplace:
+The repository is a plugin marketplace, `erwint-tools`, for both Claude Code and Codex.
+
+Claude Code (inside a session):
 
 ```text
 /plugin marketplace add erwint/coai
 /plugin install coai@erwint-tools
 ```
 
-On first launch the plugin installs the latest release binary to `~/.local/bin/coai`. The Claude and Codex plugins share that binary. After that, coai checks for a newer release at most once a day and replaces itself, so new sessions use the new version; set `COAI_NO_UPDATE=1` to turn this off, or run `coai update` by hand. No repository clone or local Go toolchain is required.
-
-For Codex CLI, install the release binary and register it as an MCP server:
-
-Download the archive for your operating system and architecture from the [latest release](https://github.com/erwint/coai/releases/latest), place the `coai` binary on your `PATH`, then register it:
+Codex CLI:
 
 ```bash
-codex mcp add coai -- coai
+codex plugin marketplace add erwint/coai
+codex plugin add coai@erwint-tools
 ```
 
-If you are developing locally, build the bundled MCP binary instead:
+To update, run `/plugin update coai@erwint-tools` in Claude Code, or `codex plugin marketplace upgrade erwint-tools` followed by `codex plugin add coai@erwint-tools` for Codex. Both install a new plugin version only when its version number changes.
+
+On first launch the plugin installs the latest release binary to `~/.local/bin/coai`. The Claude and Codex plugins share that binary. After that, coai checks for a newer release at most once a day and replaces itself, so new sessions use the new version; set `COAI_NO_UPDATE=1` to turn this off, or run `coai update` by hand. No repository clone or local Go toolchain is required.
+
+In Claude Code, `/coai:join <session> <agent-id>` joins a session and starts event delivery. The Codex plugin's launcher starts the managed app-server daemon and verifies its handshake before exposing MCP tools; registering a bare `coai` with `codex mcp add` skips that, so Codex would not receive events.
+
+If you are developing locally, build the bundled MCP binary and install from the clone:
 
 ```bash
 git clone git@github.com:erwint/coai.git
 cd coai
 ./scripts/build-plugin.sh
+codex plugin marketplace add "$PWD"      # or, in Claude Code: /plugin marketplace add ./
 ```
 
-Claude Code loads `.claude-mcp.json` through its plugin manifest. Codex loads the MCP declaration in `.codex-plugin/plugin.json`; its launcher starts the managed app-server daemon and verifies its handshake before exposing MCP tools. Both clients share the same coordination database; set `COAI_STATE` explicitly when sessions need a non-default location.
+Both clients share the same coordination database; set `COAI_STATE` explicitly when sessions need a non-default location.
 
 ## Build and configure
 

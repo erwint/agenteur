@@ -32,6 +32,7 @@ CI (`.github/workflows/ci.yml`) runs test, vet, and build. Releases are made by 
 ## Plugin packaging
 
 - Claude: `.claude-plugin/plugin.json` points to `.claude-mcp.json`, which runs `scripts/run.sh`, and declares the `events` monitor (`run.sh watch`). `run.sh` runs `bin/coai` if a local build exists. Otherwise it runs `~/.local/bin/coai`, which is shared by both plugins, installing the latest release there on first use. It deliberately ignores any other `coai` on `PATH`, since pre-0.3 releases lack `watch`. Before starting coai it updates the binary if it is older than `scripts/requires-coai`.
+- Marketplaces: the repository root is the plugin for both clients. `.claude-plugin/marketplace.json` (Claude) and `.agents/plugins/marketplace.json` (Codex, `"path": "./"`) both name the marketplace `erwint-tools`, so users install `coai@erwint-tools` from `erwint/coai` in either client. Keep the names in step.
 - Codex: `.codex-plugin/plugin.json` runs `scripts/run-codex.sh`. That script starts `codex app-server daemon start` (unless `COAI_CODEX_SOCKET` is set), runs `--check-codex`, then execs `run.sh`. It must never install or replace the Codex binary. Diagnostics must go to stderr, because stdout is the MCP stream.
 - **Versions:** the binary's version comes from the git tag (`-X main.version`, set by GoReleaser and by `git describe` in `make build` / `build-plugin.sh`). Archives have no version in their names, so `run.sh` installs from `releases/latest/download/`, and `update.go` checks `releases/latest` once a day and replaces the binary. Builds whose version is `dev` or a `git describe` string are never replaced. The plugin version is separate: see [Versions](#versions) below.
 
@@ -60,7 +61,7 @@ How to bump:
 
 - Use `scripts/release.sh plugin X.Y.Z`. It sets the version in both manifests, runs the checks, commits, and tags the commit `plugin-vX.Y.Z`. Push the commit and the tag yourself.
 - Keep both manifests at the same version.
-- Never add `version` to the entry in `.claude-plugin/marketplace.json`: the manifest overrides it, so a second copy can only drift.
+- Never add `version` to the marketplace entries (`.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`): the manifests are the only source, so a second copy can only drift.
 - Bump once per push, not once per commit. If `git diff origin/main -- .claude-plugin/plugin.json` already shows a bump, leave it. Bump in the same commit as the plugin change, or in a follow-up commit before pushing.
 - Use semver:
   - **Patch:** fixes and wording changes in scripts or skills.
