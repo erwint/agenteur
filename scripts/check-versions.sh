@@ -37,10 +37,10 @@ for m in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
   fi
 done
 
-# Users install coai@erwint-tools in either client.
+# Users install coai@coai in either client.
 for m in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
   name=$(perl -ne 'if (/"name"\s*:\s*"([^"]*)"/) { print $1; exit }' "$m")
-  [ "$name" = erwint-tools ] || error "$m names the marketplace $name, not erwint-tools"
+  [ "$name" = coai ] || error "$m names the marketplace $name, not coai"
 done
 
 # A plugin must never require a binary nobody can download yet.

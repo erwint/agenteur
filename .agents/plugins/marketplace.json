@@ -1,6 +1,6 @@
 {
-  "name": "erwint-tools",
-  "interface": { "displayName": "erwint tools" },
+  "name": "coai",
+  "interface": { "displayName": "CoAI" },
   "plugins": [
     {
       "name": "coai",

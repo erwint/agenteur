@@ -25,23 +25,23 @@ The release workflow uses the repository's `GITHUB_TOKEN`; no personal token is 
 
 ## Install as a plugin
 
-The repository is a plugin marketplace, `erwint-tools`, for both Claude Code and Codex.
+The repository is a plugin marketplace, `coai`, for both Claude Code and Codex.
 
 Claude Code (inside a session):
 
 ```text
 /plugin marketplace add erwint/coai
-/plugin install coai@erwint-tools
+/plugin install coai@coai
 ```
 
 Codex CLI:
 
 ```bash
 codex plugin marketplace add erwint/coai
-codex plugin add coai@erwint-tools
+codex plugin add coai@coai
 ```
 
-To update, run `/plugin update coai@erwint-tools` in Claude Code, or `codex plugin marketplace upgrade erwint-tools` followed by `codex plugin add coai@erwint-tools` for Codex. Both install a new plugin version only when its version number changes.
+To update, run `/plugin update coai@coai` in Claude Code, or `codex plugin marketplace upgrade coai` followed by `codex plugin add coai@coai` for Codex. Both install a new plugin version only when its version number changes.
 
 On first launch the plugin installs the latest release binary to `~/.local/bin/coai`. The Claude and Codex plugins share that binary. After that, coai checks for a newer release at most once a day and replaces itself, so new sessions use the new version; set `COAI_NO_UPDATE=1` to turn this off, or run `coai update` by hand. No repository clone or local Go toolchain is required.
 
