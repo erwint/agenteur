@@ -25,7 +25,9 @@ The release workflow uses the repository's `GITHUB_TOKEN`; no personal token is 
 
 ## Install as a plugin
 
-The repository is a plugin marketplace, `coai`, for both Claude Code and Codex.
+The repository is a plugin marketplace named `coai` for both Claude Code and Codex. No repository clone or Go toolchain is needed.
+
+### Install
 
 Claude Code (inside a session):
 
@@ -34,20 +36,58 @@ Claude Code (inside a session):
 /plugin install coai@coai
 ```
 
-Codex CLI:
+Codex CLI (0.162 or newer):
 
 ```bash
 codex plugin marketplace add erwint/coai
 codex plugin add coai@coai
 ```
 
-To update, run `/plugin update coai@coai` in Claude Code, or `codex plugin marketplace upgrade coai` followed by `codex plugin add coai@coai` for Codex. Both install a new plugin version only when its version number changes.
+Restart open sessions afterwards. Register coai through the plugin, not with `codex mcp add`: the plugin's launcher starts the managed Codex app-server daemon and checks its handshake, without which Codex receives no events.
 
-On first launch the plugin installs the latest release binary to `~/.local/bin/coai`. The Claude and Codex plugins share that binary. After that, coai checks for a newer release at most once a day and replaces itself, so new sessions use the new version; set `COAI_NO_UPDATE=1` to turn this off, or run `coai update` by hand. No repository clone or local Go toolchain is required.
+The first time either plugin starts coai, it downloads the latest release binary to `~/.local/bin/coai` (macOS or Linux, amd64 or arm64; needs `curl` and `tar`). Both plugins share that binary, and both clients share one coordination database; set `COAI_STATE` when sessions need a non-default location.
 
-In Claude Code, `/coai:join <session> <agent-id>` joins a session and starts event delivery. The Codex plugin's launcher starts the managed app-server daemon and verifies its handshake before exposing MCP tools; registering a bare `coai` with `codex mcp add` skips that, so Codex would not receive events.
+### Join a session
 
-If you are developing locally, build the bundled MCP binary and install from the clone:
+Claude Code:
+
+```text
+/coai:join <session> <agent-id>
+```
+
+Codex has no slash commands for plugin skills. Mention the skill instead, or ask in plain words ("join coai session myproject as codex-api"):
+
+```text
+$coai:join <session> <agent-id>
+```
+
+From then on, messages and task updates for the agent arrive by themselves. In Codex, the join result should say `codex_registered: true`; otherwise events are not delivered and the agent has to check `inbox`.
+
+### Update
+
+The plugin and the binary update separately.
+
+Plugin, in Claude Code:
+
+```text
+/plugin marketplace update coai
+/plugin update coai@coai
+```
+
+Plugin, in Codex:
+
+```bash
+codex plugin marketplace upgrade coai
+codex plugin add coai@coai
+```
+
+Both clients install a new plugin only when its version number has changed. Restart open sessions to load it. `/plugin` in Claude Code and `codex plugin list` in Codex show the installed version.
+
+The binary updates itself: coai checks for a newer release at most once a day and replaces `~/.local/bin/coai`, so new sessions use the new version. Run `~/.local/bin/coai update` to update at once, `~/.local/bin/coai version` to see the version, or set `COAI_NO_UPDATE=1` to turn self-updates off. A plugin that needs a newer binary than the one installed updates it before starting.
+
+### Develop locally
+
+Build the bundled MCP binary and install from the clone; the plugins then run `bin/coai` instead of the release binary:
 
 ```bash
 git clone git@github.com:erwint/coai.git
@@ -55,8 +95,6 @@ cd coai
 ./scripts/build-plugin.sh
 codex plugin marketplace add "$PWD"      # or, in Claude Code: /plugin marketplace add ./
 ```
-
-Both clients share the same coordination database; set `COAI_STATE` explicitly when sessions need a non-default location.
 
 ## Build and configure
 
