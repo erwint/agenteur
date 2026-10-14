@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"nhooyr.io/websocket"
 )
 
@@ -147,4 +148,19 @@ func deliverCodex(ctx context.Context, b *Broker, a Agent) error {
 		}
 	}
 	return nil
+}
+
+// callerThread returns the Codex thread a tool call came from. Codex sends it
+// in the request's _meta and does not set CODEX_THREAD_ID for MCP servers;
+// the variable is only a fallback for agents of kind codex.
+func callerThread(req *mcp.CallToolRequest, kind string) string {
+	if req != nil && req.Params != nil {
+		if id, _ := req.Params.Meta["threadId"].(string); id != "" {
+			return id
+		}
+	}
+	if kind == "codex" {
+		return os.Getenv("CODEX_THREAD_ID")
+	}
+	return ""
 }

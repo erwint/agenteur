@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"nhooyr.io/websocket"
 )
 
@@ -206,5 +207,20 @@ func TestCodexDeliveryFailureKeepsEvent(t *testing.T) {
 	events, err := b.PendingEvents("s", "a")
 	if err != nil || len(events) != 1 || events[0].Text != "durable result" {
 		t.Fatalf("event not kept for retry: %v %v", events, err)
+	}
+}
+
+func TestCallerThreadComesFromToolCallMeta(t *testing.T) {
+	t.Setenv("CODEX_THREAD_ID", "from-env")
+	req := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Meta: mcp.Meta{"threadId": "from-meta"}}}
+	if got := callerThread(req, "codex"); got != "from-meta" {
+		t.Fatalf("got %q", got)
+	}
+	empty := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{}}
+	if got := callerThread(empty, "codex"); got != "from-env" {
+		t.Fatalf("got %q", got)
+	}
+	if got := callerThread(empty, "claude"); got != "" {
+		t.Fatalf("claude agent got thread %q", got)
 	}
 }

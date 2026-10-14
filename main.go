@@ -55,7 +55,7 @@ type listArgs struct {
 type threadArgs struct {
 	Session  string `json:"session"`
 	Agent    string `json:"agent"`
-	ThreadID string `json:"thread_id"`
+	ThreadID string `json:"thread_id,omitempty"`
 	Socket   string `json:"socket,omitempty"`
 }
 type leaseArgs struct {
@@ -132,7 +132,7 @@ func main() {
 	var localMu sync.RWMutex
 	var local Agent
 	s := mcp.NewServer(&mcp.Implementation{Name: "coai-coordinator", Version: version}, &mcp.ServerOptions{Instructions: instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
-	mcp.AddTool(s, &mcp.Tool{Name: "join_session", Description: "Register an agent in a shared coordination session."}, func(ctx context.Context, _ *mcp.CallToolRequest, a joinArgs) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "join_session", Description: "Register an agent in a shared coordination session."}, func(ctx context.Context, req *mcp.CallToolRequest, a joinArgs) (*mcp.CallToolResult, any, error) {
 		if a.Agent == "" || a.Session == "" {
 			return nil, nil, fmt.Errorf("session and agent are required")
 		}
@@ -140,8 +140,8 @@ func main() {
 			a.CWD, _ = os.Getwd()
 		}
 		thread := a.ThreadID
-		if thread == "" && a.Kind == "codex" {
-			thread = os.Getenv("CODEX_THREAD_ID")
+		if thread == "" {
+			thread = callerThread(req, a.Kind)
 		}
 		var connectionErr error
 		if thread != "" {
@@ -218,7 +218,10 @@ func main() {
 		v, e := b.Messages(a.Session, a.Agent)
 		return text(map[string]any{"messages": v, "error": errString(e)})
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "register_codex_thread", Description: "Associate a Codex app-server thread and Unix socket with an agent."}, func(ctx context.Context, _ *mcp.CallToolRequest, a threadArgs) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "register_codex_thread", Description: "Associate a Codex app-server thread and Unix socket with an agent. Without thread_id, the calling Codex thread is used."}, func(ctx context.Context, req *mcp.CallToolRequest, a threadArgs) (*mcp.CallToolResult, any, error) {
+		if a.ThreadID == "" {
+			a.ThreadID = callerThread(req, "codex")
+		}
 		err := checkCodexThread(ctx, a.Socket, a.ThreadID)
 		if err == nil {
 			err = b.RegisterThread(a.Session, a.Agent, a.ThreadID, codexSocket(a.Socket))
