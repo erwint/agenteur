@@ -12,7 +12,7 @@
         "name": "events",
         "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/run.sh watch",
         "description": "coai messages and task updates for this session's agent",
-        "when": "on-skill-invoke:join"
+        "when": "on-skill-invoke:coai:join"
       }
     ]
   }
