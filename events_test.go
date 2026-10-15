@@ -165,3 +165,23 @@ func TestJoinSeesRunningWatcher(t *testing.T) {
 		t.Fatal("another Claude session counted as watched")
 	}
 }
+
+func TestLeaveStopsDelivery(t *testing.T) {
+	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
+	if err := b.Join(Agent{ID: "a", Session: "s", ClaudePID: 42}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Send(Message{Session: "s", From: "b", To: "a", Text: "before"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Leave("s", "a"); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := watchOnce(b, "", 42, &out); err != nil || out.Len() != 0 {
+		t.Fatalf("delivered after leaving: %q %v", out.String(), err)
+	}
+	if err := b.Leave("s", "a"); err == nil {
+		t.Fatal("leaving twice reported success")
+	}
+}

@@ -110,6 +110,21 @@ func (b *Broker) RegisterThread(s, a, t, sk string) error {
 	}
 	return nil
 }
+// Leave removes an agent from a session and releases its file leases, so no
+// more events are delivered to it. Its messages and tasks stay in the history.
+func (b *Broker) Leave(session, agent string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	r, e := b.db.Exec(`DELETE FROM agents WHERE session=? AND id=?`, session, agent)
+	if e != nil {
+		return e
+	}
+	if n, _ := r.RowsAffected(); n == 0 {
+		return fmt.Errorf("agent %s is not in session %s", agent, session)
+	}
+	_, e = b.db.Exec(`DELETE FROM leases WHERE session=? AND agent=?`, session, agent)
+	return e
+}
 func (b *Broker) Send(m Message) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()

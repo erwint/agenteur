@@ -63,6 +63,8 @@ $coai:join <session> <agent-id>
 
 From then on, messages and task updates for the agent arrive by themselves. In Codex, the join result should say `codex_registered: true`; otherwise events are not delivered and the agent has to check `inbox`.
 
+To leave, use `/coai:leave` in Claude Code or `$coai:leave` in Codex. The agent is removed from the session, its file leases are released, and nothing more is delivered to it. Its messages and tasks stay in the session's history.
+
 ### Update
 
 The plugin and the binary update separately.
@@ -106,7 +108,7 @@ claude mcp add --transport stdio coai -- /absolute/path/coai
 
 Set `COAI_STATE` to share a database explicitly (the default is `$XDG_CONFIG_HOME/coai/state.json` or the platform user config directory; the filename is retained for compatibility). Keep it on a local filesystem; the database is created with private permissions.
 
-Agents should first call `join_session` with a common session name and unique agent ID. Codex agents should then call `register_codex_thread` with their app-server `thread_id` and optional socket path. Use `create_task`, `send_message`, `ack_message`, `await_task`, `complete_task`, `claim_files`, `release_files`, and `list_session` to coordinate. `await_task` is cancellation-aware and uses durable polling, so it works across separately spawned MCP processes. When a client supplies an MCP progress token, it also receives a heartbeat before the durable wait.
+Agents should first call `join_session` with a common session name and unique agent ID. Codex agents should then call `register_codex_thread` with their app-server `thread_id` and optional socket path. Use `leave_session`, `create_task`, `send_message`, `ack_message`, `await_task`, `complete_task`, `claim_files`, `release_files`, and `list_session` to coordinate. `await_task` is cancellation-aware and uses durable polling, so it works across separately spawned MCP processes. When a client supplies an MCP progress token, it also receives a heartbeat before the durable wait.
 
 ## Event delivery
 

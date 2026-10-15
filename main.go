@@ -49,6 +49,10 @@ type completeArgs struct {
 	TaskID string `json:"task_id"`
 	Result string `json:"result"`
 }
+type leaveArgs struct {
+	Session string `json:"session"`
+	Agent   string `json:"agent"`
+}
 type listArgs struct {
 	Session string `json:"session"`
 }
@@ -270,6 +274,17 @@ func main() {
 		}
 		t, err := b.Await(ctx, a.TaskID)
 		return text(tOrErr(t, err))
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "leave_session", Description: "Remove an agent from a session and release its file leases. No further events are delivered to it."}, func(_ context.Context, _ *mcp.CallToolRequest, a leaveArgs) (*mcp.CallToolResult, any, error) {
+		err := b.Leave(a.Session, a.Agent)
+		if err == nil {
+			localMu.Lock()
+			if local.Session == a.Session && local.ID == a.Agent {
+				local = Agent{}
+			}
+			localMu.Unlock()
+		}
+		return text(map[string]any{"left": err == nil, "error": errString(err), "session": a.Session, "agent": a.Agent})
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "list_session", Description: "List agents, messages, and tasks in a session."}, func(_ context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
 		v, err := b.Snapshot(a.Session)
