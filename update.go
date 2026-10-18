@@ -33,24 +33,37 @@ var (
 )
 
 // latestRelease reads the newest tag from the redirect on releases/latest,
-// which needs no API quota.
-func latestRelease(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releaseBase+"/latest", nil)
-	if err != nil {
-		return "", err
+// which needs no API quota. It returns the releases URL the tag was found
+// under: after a repository rename (coai becomes agenteur), GitHub first
+// redirects to the new repository's releases/latest, and downloads should
+// come from there.
+func latestRelease(ctx context.Context) (base, tag string, err error) {
+	url := releaseBase + "/latest"
+	for hops := 0; hops < 5; hops++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return "", "", err
+		}
+		req.Header.Set("User-Agent", "coai/"+version)
+		resp, err := noRedirect.Do(req)
+		if err != nil {
+			return "", "", err
+		}
+		resp.Body.Close()
+		loc, err := resp.Location()
+		if err != nil {
+			return "", "", fmt.Errorf("%s: %s, no redirect", url, resp.Status)
+		}
+		next := loc.String()
+		if i := strings.LastIndex(next, "/tag/"); i >= 0 && strings.HasPrefix(next[i+5:], "v") {
+			return next[:i], next[i+5:], nil
+		}
+		if !strings.HasSuffix(next, "/releases/latest") {
+			return "", "", fmt.Errorf("%s: %s, redirect %q", url, resp.Status, next)
+		}
+		url = next
 	}
-	req.Header.Set("User-Agent", "coai/"+version)
-	resp, err := noRedirect.Do(req)
-	if err != nil {
-		return "", err
-	}
-	resp.Body.Close()
-	loc := resp.Header.Get("Location")
-	tag := loc[strings.LastIndex(loc, "/")+1:]
-	if !strings.HasPrefix(tag, "v") {
-		return "", fmt.Errorf("%s/latest: %s, redirect %q", releaseBase, resp.Status, loc)
-	}
-	return tag, nil
+	return "", "", fmt.Errorf("%s: too many redirects", releaseBase)
 }
 
 // newer reports whether latest is a higher version than current. Only a
@@ -99,11 +112,36 @@ func parseVersion(v string) ([3]int, bool) {
 	return out, true
 }
 
-// applyRelease downloads tag and renames it over exe. Writing beside the
-// target keeps the rename on one filesystem, and a coai that is already
-// running keeps the file it opened.
-func applyRelease(ctx context.Context, tag, exe string) error {
-	url := fmt.Sprintf("%s/download/%s/coai_%s_%s.tar.gz", releaseBase, tag, runtime.GOOS, runtime.GOARCH)
+// successor is the name coai is released under after the rename. Its
+// releases carry agenteur_<os>_<arch> archives holding an agenteur binary.
+const successor = "agenteur"
+
+// applyRelease downloads tag from base and renames it over exe. Writing beside
+// the target keeps the rename on one filesystem, and a coai that is already
+// running keeps the file it opened. A release of the successor replaces exe
+// all the same, so every plugin, session and launcher that runs coai moves
+// with it, and gains an agenteur link beside it.
+func applyRelease(ctx context.Context, base, tag, exe string) error {
+	for _, name := range []string{"coai", successor} {
+		err := applyArchive(ctx, base, tag, name, exe)
+		if err == errNoArchive {
+			continue
+		}
+		if err == nil && name == successor {
+			link := filepath.Join(filepath.Dir(exe), successor)
+			if _, statErr := os.Lstat(link); os.IsNotExist(statErr) {
+				_ = os.Symlink(filepath.Base(exe), link)
+			}
+		}
+		return err
+	}
+	return fmt.Errorf("release %s has no archive for %s/%s", tag, runtime.GOOS, runtime.GOARCH)
+}
+
+var errNoArchive = fmt.Errorf("no such archive")
+
+func applyArchive(ctx context.Context, base, tag, name, exe string) error {
+	url := fmt.Sprintf("%s/download/%s/%s_%s_%s.tar.gz", base, tag, name, runtime.GOOS, runtime.GOARCH)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -113,6 +151,9 @@ func applyRelease(ctx context.Context, tag, exe string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return errNoArchive
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download %s: %s", url, resp.Status)
 	}
@@ -124,12 +165,12 @@ func applyRelease(ctx context.Context, tag, exe string) error {
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
-			return fmt.Errorf("no coai binary in %s", url)
+			return fmt.Errorf("no %s binary in %s", name, url)
 		}
 		if err != nil {
 			return err
 		}
-		if filepath.Base(h.Name) != "coai" || h.Typeflag != tar.TypeReg {
+		if filepath.Base(h.Name) != name || h.Typeflag != tar.TypeReg {
 			continue
 		}
 		tmp, err := os.CreateTemp(filepath.Dir(exe), ".coai-update-*")
@@ -155,9 +196,9 @@ func applyRelease(ctx context.Context, tag, exe string) error {
 // install coai once and never again, so without this a machine keeps the first
 // version it downloaded. It fails silently: it runs beside the MCP server, and
 // a read-only install or an offline machine must not disturb the session.
-// COAI_NO_UPDATE=1 turns it off.
+// COAI_NO_UPDATE=1 (or AGENTEUR_NO_UPDATE=1) turns it off.
 func updateIfStale(ctx context.Context, stamp string) {
-	if os.Getenv("COAI_NO_UPDATE") != "" {
+	if setting("NO_UPDATE") != "" {
 		return
 	}
 	if st, err := os.Stat(stamp); err == nil && time.Since(st.ModTime()) < 24*time.Hour {
@@ -172,7 +213,7 @@ func updateIfStale(ctx context.Context, stamp string) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	tag, err := latestRelease(ctx)
+	base, tag, err := latestRelease(ctx)
 	if err != nil || !newer(version, tag) {
 		return
 	}
@@ -183,7 +224,17 @@ func updateIfStale(ctx context.Context, stamp string) {
 	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = resolved
 	}
-	if err := applyRelease(ctx, tag, exe); err == nil {
+	if err := applyRelease(ctx, base, tag, exe); err == nil {
 		fmt.Fprintf(os.Stderr, "coai: updated %s to %s; new sessions use it\n", exe, tag)
 	}
+}
+
+// setting reads an environment setting under its successor name first
+// (AGENTEUR_STATE), then under coai's (COAI_STATE), so users can switch to the
+// new names before the rename.
+func setting(name string) string {
+	if v := os.Getenv(strings.ToUpper(successor) + "_" + name); v != "" {
+		return v
+	}
+	return os.Getenv("COAI_" + name)
 }

@@ -19,7 +19,7 @@ func codexSocket(socket string) string {
 	if socket != "" {
 		return socket
 	}
-	if socket = os.Getenv("COAI_CODEX_SOCKET"); socket != "" {
+	if socket = setting("CODEX_SOCKET"); socket != "" {
 		return socket
 	}
 	home := os.Getenv("CODEX_HOME")

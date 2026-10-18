@@ -75,7 +75,7 @@ func text(v any) (*mcp.CallToolResult, any, error) {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil, nil
 }
 func main() {
-	defaultPath := os.Getenv("COAI_STATE")
+	defaultPath := setting("STATE")
 	if defaultPath == "" {
 		d, _ := os.UserConfigDir()
 		defaultPath = filepath.Join(d, "coai", "state.json")
@@ -95,14 +95,14 @@ func main() {
 		return
 	case "update":
 		ctx := context.Background()
-		tag, err := latestRelease(ctx)
+		base, tag, err := latestRelease(ctx)
 		if err == nil && newer(version, tag) {
 			var exe string
 			if exe, err = os.Executable(); err == nil {
 				if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
 					exe = resolved
 				}
-				if err = applyRelease(ctx, tag, exe); err == nil {
+				if err = applyRelease(ctx, base, tag, exe); err == nil {
 					fmt.Printf("updated %s from %s to %s\n", exe, version, tag)
 				}
 			}

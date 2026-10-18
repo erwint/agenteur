@@ -100,6 +100,12 @@ cd coai
 codex plugin marketplace add "$PWD"      # or, in Claude Code: /plugin marketplace add ./
 ```
 
+### Upcoming rename to agenteur
+
+coai will be renamed **agenteur**. Installed copies move by themselves: once the repository is renamed, coai's daily self-update installs the agenteur binary in place of `~/.local/bin/coai` and adds an `agenteur` link beside it, so running sessions and both plugins keep working. The coordination database stays where it is.
+
+Every setting already has its new name: `AGENTEUR_STATE`, `AGENTEUR_CODEX_SOCKET` and `AGENTEUR_NO_UPDATE` work today and take precedence over the `COAI_*` names, which keep working. Switching the plugins to the agenteur marketplace comes with the rename; the plugins will say so when it is time.
+
 ## Build and configure
 
 ```bash
