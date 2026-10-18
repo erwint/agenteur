@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -158,6 +159,10 @@ func TestCodexResultGoesToRequester(t *testing.T) {
 	}
 	if err := deliverCodex(context.Background(), b, requester); err != nil {
 		t.Fatal(err)
+	}
+	// The requester first hears that the worker joined, then the outcome.
+	if c := call(requests); !strings.Contains(fmt.Sprint(c), `coai agent worker joined session "s"`) {
+		t.Fatal(c)
 	}
 	c := call(requests)
 	p := c["params"].(map[string]any)

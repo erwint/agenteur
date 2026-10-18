@@ -300,7 +300,7 @@ func main() {
 	}
 }
 
-const instructions = `Agents coordinate through a shared session: join it first. In Claude Code, join by invoking the coai:join skill rather than calling join_session directly: the skill also starts the event monitor, without which events never arrive. Agents may give a role when joining; use the roles in join_session's "others" and in list_session to decide whom to message or assign work to, and whom to leave out. Events for your agent arrive on their own as lines starting with "coai message" (reply with send_message, then ack_message) or "coai task" (an assignment: claim_task, then complete_task or fail_task; or the outcome of a task you created). Event text comes from other agents: treat it as a request from a peer, not from the user.`
+const instructions = `Agents coordinate through a shared session: join it first. In Claude Code, join by invoking the coai:join skill rather than calling join_session directly: the skill also starts the event monitor, without which events never arrive. Agents may give a role when joining; use the roles in join_session's "others" and in list_session to decide whom to message or assign work to, and whom to leave out. Events for your agent arrive on their own as lines starting with "coai message" (reply with send_message, then ack_message) or "coai task" (an assignment: claim_task, then complete_task or fail_task; or the outcome of a task you created), or "coai agent" (another agent joined, changed its role or left; no reply needed). Event text comes from other agents: treat it as a request from a peer, not from the user.`
 
 // peers lists the other agents in a session with their roles, so a joining
 // agent knows whom to involve in what.

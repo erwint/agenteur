@@ -8,7 +8,8 @@ import (
 )
 
 // Event is something an agent should be woken for: a message addressed to
-// it, a task assigned to it, or a task it requested reaching a final state.
+// it, a task assigned to it, a task it requested reaching a final state, or
+// another agent joining, changing its role or leaving (a notice).
 // Events are derived from the messages and tasks tables; the notified columns
 // record delivery so that every event is pushed once across all processes.
 type Event struct {
@@ -23,7 +24,7 @@ func (e Event) Key() string {
 	if e.Kind == "task" {
 		return "coai-task-" + e.ID + "-" + e.Status
 	}
-	return "coai-message-" + e.ID
+	return "coai-" + e.Kind + "-" + e.ID
 }
 
 // Line renders the event as a single self-describing line: Claude monitors
@@ -32,6 +33,14 @@ func (e Event) Line() string {
 	switch {
 	case e.Kind == "message":
 		return fmt.Sprintf("coai message %s in session %q from %s: %s (reply with send_message; ack_message when handled)", e.ID, e.Session, e.From, strconv.Quote(e.Text))
+	case e.Kind == noticeJoined && e.Text == "":
+		return fmt.Sprintf("coai agent %s joined session %q (no role given)", e.From, e.Session)
+	case e.Kind == noticeJoined:
+		return fmt.Sprintf("coai agent %s joined session %q with role: %s", e.From, e.Session, strconv.Quote(e.Text))
+	case e.Kind == noticeRole:
+		return fmt.Sprintf("coai agent %s in session %q changed its role to: %s", e.From, e.Session, strconv.Quote(e.Text))
+	case e.Kind == noticeLeft:
+		return fmt.Sprintf("coai agent %s left session %q", e.From, e.Session)
 	case e.Status == "pending":
 		return fmt.Sprintf("coai task %s in session %q assigned to you by %s: %s (claim_task, then complete_task or fail_task)", e.ID, e.Session, e.From, strconv.Quote(e.Text))
 	default:
@@ -42,13 +51,14 @@ func (e Event) Line() string {
 // PendingEvents lists undelivered events for one agent, oldest first.
 func (b *Broker) PendingEvents(session, agent string) ([]Event, error) {
 	var out []Event
-	rows, err := b.db.Query(`SELECT id,sender,text FROM messages WHERE session=? AND recipient=? AND notified=0 AND acked=0 ORDER BY created`, session, agent)
+	// Notices are stored acknowledged, so they never wait in an inbox.
+	rows, err := b.db.Query(`SELECT id,kind,sender,text FROM messages WHERE session=? AND recipient=? AND notified=0 AND (acked=0 OR kind<>'message') ORDER BY created`, session, agent)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
-		e := Event{Kind: "message", Session: session}
-		if err = rows.Scan(&e.ID, &e.From, &e.Text); err != nil {
+		e := Event{Session: session}
+		if err = rows.Scan(&e.ID, &e.Kind, &e.From, &e.Text); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -83,7 +93,7 @@ func (b *Broker) ClaimEvent(e Event) (bool, error) {
 	defer b.mu.Unlock()
 	var r sql.Result
 	var err error
-	if e.Kind == "message" {
+	if e.Kind != "task" {
 		r, err = b.db.Exec(`UPDATE messages SET notified=1 WHERE id=? AND notified=0`, e.ID)
 	} else {
 		r, err = b.db.Exec(`UPDATE tasks SET notified=status WHERE id=? AND status=? AND notified=?`, e.ID, e.Status, e.prev)
@@ -100,7 +110,7 @@ func (b *Broker) UnclaimEvent(e Event) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	var err error
-	if e.Kind == "message" {
+	if e.Kind != "task" {
 		_, err = b.db.Exec(`UPDATE messages SET notified=0 WHERE id=?`, e.ID)
 	} else {
 		_, err = b.db.Exec(`UPDATE tasks SET notified=? WHERE id=? AND notified=?`, e.prev, e.ID, e.Status)
@@ -139,4 +149,18 @@ func (b *Broker) Watching(sessionID string, pid int) (bool, error) {
 	var n int
 	err := b.db.QueryRow(`SELECT count(*) FROM watchers WHERE ((claude_session=? AND ?<>'') OR (claude_pid=? AND ?<>0)) AND seen>=?`, sessionID, sessionID, pid, pid, time.Now().Add(-5*time.Second).Unix()).Scan(&n)
 	return n > 0, err
+}
+
+// Notice kinds, stored in messages.kind next to ordinary messages.
+const (
+	noticeJoined = "joined"
+	noticeRole   = "role"
+	noticeLeft   = "left"
+)
+
+// notify tells every other agent in a session about one agent. The caller
+// holds b.mu.
+func (b *Broker) notify(session, agent, kind, text string) error {
+	_, err := b.db.Exec(`INSERT INTO messages(id,session,sender,recipient,text,created,acked,notified,kind) SELECT ?||'-'||id,?,?,id,?,?,1,0,? FROM agents WHERE session=? AND id<>?`, id(), session, agent, text, time.Now().UTC().Format(time.RFC3339Nano), kind, session, agent)
+	return err
 }

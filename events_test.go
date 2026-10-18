@@ -185,3 +185,41 @@ func TestLeaveStopsDelivery(t *testing.T) {
 		t.Fatal("leaving twice reported success")
 	}
 }
+
+func TestOthersHearJoinsRoleChangesAndLeaves(t *testing.T) {
+	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
+	if err := b.Join(Agent{ID: "web", Session: "s", ClaudePID: 42}); err != nil {
+		t.Fatal(err)
+	}
+	lines := func() string {
+		var out strings.Builder
+		if err := watchOnce(b, "", 42, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	steps := []struct {
+		do   func() error
+		want string
+	}{
+		{func() error { return b.Join(Agent{ID: "api", Session: "s", Role: "owns the REST API"}) }, `coai agent api joined session "s" with role: "owns the REST API"` + "\n"},
+		{func() error { return b.Join(Agent{ID: "api", Session: "s"}) }, ""},
+		{func() error { return b.Join(Agent{ID: "api", Session: "s", Role: "owns the REST API"}) }, ""},
+		{func() error { return b.Join(Agent{ID: "api", Session: "s", Role: "reviews"}) }, `coai agent api in session "s" changed its role to: "reviews"` + "\n"},
+		{func() error { return b.Leave("s", "api") }, `coai agent api left session "s"` + "\n"},
+	}
+	for i, st := range steps {
+		if err := st.do(); err != nil {
+			t.Fatal(err)
+		}
+		if got := lines(); got != st.want {
+			t.Fatalf("step %d: got %q, want %q", i, got, st.want)
+		}
+	}
+	if m, _ := b.Messages("s", "web"); len(m) != 0 {
+		t.Fatalf("notices in inbox: %v", m)
+	}
+	if st, _ := b.Snapshot("s"); len(st.Messages) != 0 {
+		t.Fatalf("notices in session history: %v", st.Messages)
+	}
+}

@@ -69,6 +69,7 @@ func migrate(db *sql.DB) error {
 		{"agents", "claude_session TEXT NOT NULL DEFAULT ''", ""},
 		{"agents", "claude_pid INTEGER NOT NULL DEFAULT 0", ""},
 		{"agents", "role TEXT NOT NULL DEFAULT ''", ""},
+		{"messages", "kind TEXT NOT NULL DEFAULT 'message'", ""},
 		{"messages", "notified INTEGER NOT NULL DEFAULT 0", "UPDATE messages SET notified=1"},
 		{"tasks", "notified TEXT NOT NULL DEFAULT ''", "UPDATE tasks SET notified=status"},
 	} {
@@ -96,8 +97,17 @@ func (b *Broker) Join(a Agent) error {
 			return e
 		}
 	}
+	// Others hear about a new agent or a new role, not about reconnects.
+	var old string
+	existed := b.db.QueryRow(`SELECT role FROM agents WHERE session=? AND id=?`, a.Session, a.ID).Scan(&old) == nil
 	_, e := b.db.Exec(`INSERT INTO agents(session,id,kind,cwd,thread_id,socket,joined,claude_session,claude_pid,role) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session,id) DO UPDATE SET kind=excluded.kind,cwd=excluded.cwd,thread_id=excluded.thread_id,socket=excluded.socket,joined=excluded.joined,claude_session=excluded.claude_session,claude_pid=excluded.claude_pid,role=CASE WHEN excluded.role<>'' THEN excluded.role ELSE agents.role END`, a.Session, a.ID, a.Kind, a.CWD, a.ThreadID, a.Socket, time.Now().UTC().Format(time.RFC3339Nano), a.ClaudeSession, a.ClaudePID, a.Role)
-	return e
+	if e != nil || (existed && (a.Role == "" || a.Role == old)) {
+		return e
+	}
+	if !existed {
+		return b.notify(a.Session, a.ID, noticeJoined, a.Role)
+	}
+	return b.notify(a.Session, a.ID, noticeRole, a.Role)
 }
 func (b *Broker) RegisterThread(s, a, t, sk string) error {
 	b.mu.Lock()
@@ -125,8 +135,10 @@ func (b *Broker) Leave(session, agent string) error {
 	if n, _ := r.RowsAffected(); n == 0 {
 		return fmt.Errorf("agent %s is not in session %s", agent, session)
 	}
-	_, e = b.db.Exec(`DELETE FROM leases WHERE session=? AND agent=?`, session, agent)
-	return e
+	if _, e = b.db.Exec(`DELETE FROM leases WHERE session=? AND agent=?`, session, agent); e != nil {
+		return e
+	}
+	return b.notify(session, agent, noticeLeft, "")
 }
 func (b *Broker) Send(m Message) error {
 	b.mu.Lock()
@@ -259,10 +271,10 @@ func (b *Broker) Snapshot(s string) (state, error) {
 		o.Agents = append(o.Agents, x)
 	}
 	r.Close()
-	q = `SELECT id,session,sender,recipient,text,created,acked FROM messages`
+	q = `SELECT id,session,sender,recipient,text,created,acked FROM messages WHERE kind='message'`
 	a = nil
 	if s != "" {
-		q += ` WHERE session=?`
+		q += ` AND session=?`
 		a = []any{s}
 	}
 	r, e = b.db.Query(q, a...)
