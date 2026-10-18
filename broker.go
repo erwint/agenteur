@@ -112,6 +112,7 @@ func (b *Broker) RegisterThread(s, a, t, sk string) error {
 	}
 	return nil
 }
+
 // Leave removes an agent from a session and releases its file leases, so no
 // more events are delivered to it. Its messages and tasks stay in the history.
 func (b *Broker) Leave(session, agent string) error {
