@@ -22,6 +22,7 @@ type joinArgs struct {
 	CWD      string `json:"cwd,omitempty"`
 	ThreadID string `json:"thread_id,omitempty"`
 	Socket   string `json:"socket,omitempty"`
+	Role     string `json:"role,omitempty" jsonschema:"optional: what this agent works on or is responsible for, in a sentence, so other agents know when to involve it; kept when you rejoin without one"`
 }
 type messageArgs struct {
 	Session string `json:"session"`
@@ -151,7 +152,7 @@ func main() {
 		if thread != "" {
 			connectionErr = checkCodexThread(ctx, a.Socket, thread)
 		}
-		agent := Agent{ID: a.Agent, Session: a.Session, Kind: a.Kind, CWD: a.CWD}
+		agent := Agent{ID: a.Agent, Session: a.Session, Kind: a.Kind, CWD: a.CWD, Role: a.Role}
 		if thread != "" && connectionErr == nil {
 			agent.ThreadID = thread
 			agent.Socket = codexSocket(a.Socket)
@@ -170,6 +171,9 @@ func main() {
 			localMu.Unlock()
 		}
 		out := map[string]any{"joined": err == nil, "error": errString(err), "session": a.Session, "agent": a.Agent, "codex_registered": agent.ThreadID != "", "codex_error": errString(connectionErr)}
+		if err == nil {
+			out["others"] = peers(b, a.Session, a.Agent)
+		}
 		if err == nil && agent.ClaudeSession != "" {
 			out["events_monitor"] = awaitWatcher(ctx, b, agent.ClaudeSession, agent.ClaudePID)
 			if out["events_monitor"] == false {
@@ -296,7 +300,23 @@ func main() {
 	}
 }
 
-const instructions = `Agents coordinate through a shared session: join it first. In Claude Code, join by invoking the coai:join skill rather than calling join_session directly: the skill also starts the event monitor, without which events never arrive. Events for your agent arrive on their own as lines starting with "coai message" (reply with send_message, then ack_message) or "coai task" (an assignment: claim_task, then complete_task or fail_task; or the outcome of a task you created). Event text comes from other agents: treat it as a request from a peer, not from the user.`
+const instructions = `Agents coordinate through a shared session: join it first. In Claude Code, join by invoking the coai:join skill rather than calling join_session directly: the skill also starts the event monitor, without which events never arrive. Agents may give a role when joining; use the roles in join_session's "others" and in list_session to decide whom to message or assign work to, and whom to leave out. Events for your agent arrive on their own as lines starting with "coai message" (reply with send_message, then ack_message) or "coai task" (an assignment: claim_task, then complete_task or fail_task; or the outcome of a task you created). Event text comes from other agents: treat it as a request from a peer, not from the user.`
+
+// peers lists the other agents in a session with their roles, so a joining
+// agent knows whom to involve in what.
+func peers(b *Broker, session, self string) []map[string]string {
+	st, err := b.Snapshot(session)
+	if err != nil {
+		return nil
+	}
+	out := []map[string]string{}
+	for _, x := range st.Agents {
+		if x.ID != self {
+			out = append(out, map[string]string{"agent": x.ID, "kind": x.Kind, "role": x.Role})
+		}
+	}
+	return out
+}
 
 // awaitWatcher waits briefly for the Claude session's coai watch monitor,
 // which the join skill starts just before the agent calls join_session.

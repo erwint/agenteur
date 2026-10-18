@@ -117,3 +117,25 @@ func TestInjectCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRoleSurvivesRejoinWithoutOne(t *testing.T) {
+	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
+	if err := b.Join(Agent{ID: "api", Session: "s", Role: "owns the REST API"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Join(Agent{ID: "api", Session: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := peers(b, "s", "other"); len(got) != 1 || got[0]["role"] != "owns the REST API" {
+		t.Fatalf("%v", got)
+	}
+	if err := b.Join(Agent{ID: "api", Session: "s", Role: "reviews"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := peers(b, "s", "api"); len(got) != 0 {
+		t.Fatalf("peers include self: %v", got)
+	}
+	if st, _ := b.Snapshot("s"); st.Agents[0].Role != "reviews" {
+		t.Fatalf("role not replaced: %+v", st.Agents[0])
+	}
+}

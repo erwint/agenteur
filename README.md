@@ -61,6 +61,8 @@ Codex has no slash commands for plugin skills. Mention the skill instead, or ask
 $coai:join <session> <agent-id>
 ```
 
+Anything after the agent ID is the agent's role, such as `/coai:join myproject claude-web owns the web frontend`. Roles are optional; the other agents see them in `join_session` and `list_session` results and use them to decide whom to ask or assign work to.
+
 From then on, messages and task updates for the agent arrive by themselves. In Codex, the join result should say `codex_registered: true`; otherwise events are not delivered and the agent has to check `inbox`.
 
 To leave, use `/coai:leave` in Claude Code or `$coai:leave` in Codex. The agent is removed from the session, its file leases are released, and nothing more is delivered to it. Its messages and tasks stay in the session's history.

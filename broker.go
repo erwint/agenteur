@@ -25,6 +25,7 @@ type Agent struct {
 	ID, Session, Kind, CWD, ThreadID, Socket string
 	ClaudeSession                            string `json:",omitempty"`
 	ClaudePID                                int    `json:",omitempty"`
+	Role                                     string `json:",omitempty"`
 	Joined                                   time.Time
 }
 type state struct {
@@ -67,6 +68,7 @@ func migrate(db *sql.DB) error {
 	for _, m := range []struct{ table, column, backfill string }{
 		{"agents", "claude_session TEXT NOT NULL DEFAULT ''", ""},
 		{"agents", "claude_pid INTEGER NOT NULL DEFAULT 0", ""},
+		{"agents", "role TEXT NOT NULL DEFAULT ''", ""},
 		{"messages", "notified INTEGER NOT NULL DEFAULT 0", "UPDATE messages SET notified=1"},
 		{"tasks", "notified TEXT NOT NULL DEFAULT ''", "UPDATE tasks SET notified=status"},
 	} {
@@ -94,7 +96,7 @@ func (b *Broker) Join(a Agent) error {
 			return e
 		}
 	}
-	_, e := b.db.Exec(`INSERT INTO agents(session,id,kind,cwd,thread_id,socket,joined,claude_session,claude_pid) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(session,id) DO UPDATE SET kind=excluded.kind,cwd=excluded.cwd,thread_id=excluded.thread_id,socket=excluded.socket,joined=excluded.joined,claude_session=excluded.claude_session,claude_pid=excluded.claude_pid`, a.Session, a.ID, a.Kind, a.CWD, a.ThreadID, a.Socket, time.Now().UTC().Format(time.RFC3339Nano), a.ClaudeSession, a.ClaudePID)
+	_, e := b.db.Exec(`INSERT INTO agents(session,id,kind,cwd,thread_id,socket,joined,claude_session,claude_pid,role) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session,id) DO UPDATE SET kind=excluded.kind,cwd=excluded.cwd,thread_id=excluded.thread_id,socket=excluded.socket,joined=excluded.joined,claude_session=excluded.claude_session,claude_pid=excluded.claude_pid,role=CASE WHEN excluded.role<>'' THEN excluded.role ELSE agents.role END`, a.Session, a.ID, a.Kind, a.CWD, a.ThreadID, a.Socket, time.Now().UTC().Format(time.RFC3339Nano), a.ClaudeSession, a.ClaudePID, a.Role)
 	return e
 }
 func (b *Broker) RegisterThread(s, a, t, sk string) error {
@@ -235,7 +237,7 @@ func (b *Broker) Await(c context.Context, i string) (Task, error) {
 }
 func (b *Broker) Snapshot(s string) (state, error) {
 	var o state
-	q := `SELECT session,id,kind,cwd,COALESCE(thread_id,''),COALESCE(socket,''),joined,claude_session,claude_pid FROM agents`
+	q := `SELECT session,id,kind,cwd,COALESCE(thread_id,''),COALESCE(socket,''),joined,claude_session,claude_pid,role FROM agents`
 	a := []any{}
 	if s != "" {
 		q += ` WHERE session=?`
@@ -248,7 +250,7 @@ func (b *Broker) Snapshot(s string) (state, error) {
 	for r.Next() {
 		var x Agent
 		var j string
-		if e = r.Scan(&x.Session, &x.ID, &x.Kind, &x.CWD, &x.ThreadID, &x.Socket, &j, &x.ClaudeSession, &x.ClaudePID); e != nil {
+		if e = r.Scan(&x.Session, &x.ID, &x.Kind, &x.CWD, &x.ThreadID, &x.Socket, &j, &x.ClaudeSession, &x.ClaudePID, &x.Role); e != nil {
 			r.Close()
 			return o, e
 		}
