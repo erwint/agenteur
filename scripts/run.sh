@@ -22,7 +22,16 @@ install() {
   mkdir -p "$dir"
   tmp=$(mktemp -d "$dir/.coai-install.XXXXXX")
   trap 'rm -rf "$tmp"' EXIT
-  curl -fsSL "https://github.com/erwint/coai/releases/latest/download/coai_${os}_${arch}.tar.gz" | tar -xz -C "$tmp" coai
+  # After the rename to agenteur, the latest release only carries agenteur
+  # archives; its binary then runs as coai, as the self-update installs it.
+  for name in coai agenteur; do
+    if curl -fsL -o "$tmp/coai.tar.gz" "https://github.com/erwint/coai/releases/latest/download/${name}_${os}_${arch}.tar.gz"; then
+      tar -xzf "$tmp/coai.tar.gz" -C "$tmp" "$name"
+      [ "$name" = coai ] || mv "$tmp/$name" "$tmp/coai"
+      break
+    fi
+  done
+  [ -f "$tmp/coai" ] || { echo "coai: no release for ${os}/${arch}" >&2; exit 1; }
   chmod 755 "$tmp/coai"
   # Rename into place so a concurrent first start never runs a partial file.
   mv -f "$tmp/coai" "$dir/coai"
