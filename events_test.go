@@ -61,7 +61,7 @@ func TestTaskEventsFollowLifecycle(t *testing.T) {
 	if len(events) != 1 || events[0].Status != "completed" || events[0].From != "work" || events[0].Text != "built" {
 		t.Fatal(events)
 	}
-	if events[0].Key() != "coai-task-"+id+"-completed" {
+	if events[0].Key() != "agenteur-task-"+id+"-completed" {
 		t.Fatal(events[0].Key())
 	}
 	if ok, _ := b.ClaimEvent(events[0]); !ok {
@@ -141,7 +141,7 @@ func TestWatchPrintsEventLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	line := out.String()
-	if strings.Count(line, "\n") != 1 || !strings.HasPrefix(line, "coai message ") || !strings.Contains(line, `from peer: "two\nlines"`) {
+	if strings.Count(line, "\n") != 1 || !strings.HasPrefix(line, "agenteur message ") || !strings.Contains(line, `from peer: "two\nlines"`) {
 		t.Fatalf("%q", line)
 	}
 	out.Reset()
@@ -202,11 +202,11 @@ func TestOthersHearJoinsRoleChangesAndLeaves(t *testing.T) {
 		do   func() error
 		want string
 	}{
-		{func() error { return b.Join(Agent{ID: "api", Session: "s", Role: "owns the REST API"}) }, `coai agent api joined session "s" with role: "owns the REST API"` + "\n"},
+		{func() error { return b.Join(Agent{ID: "api", Session: "s", Role: "owns the REST API"}) }, `agenteur agent api joined session "s" with role: "owns the REST API"` + "\n"},
 		{func() error { return b.Join(Agent{ID: "api", Session: "s"}) }, ""},
 		{func() error { return b.Join(Agent{ID: "api", Session: "s", Role: "owns the REST API"}) }, ""},
-		{func() error { return b.Join(Agent{ID: "api", Session: "s", Role: "reviews"}) }, `coai agent api in session "s" changed its role to: "reviews"` + "\n"},
-		{func() error { return b.Leave("s", "api") }, `coai agent api left session "s"` + "\n"},
+		{func() error { return b.Join(Agent{ID: "api", Session: "s", Role: "reviews"}) }, `agenteur agent api in session "s" changed its role to: "reviews"` + "\n"},
+		{func() error { return b.Leave("s", "api") }, `agenteur agent api left session "s"` + "\n"},
 	}
 	for i, st := range steps {
 		if err := st.do(); err != nil {

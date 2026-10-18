@@ -1,7 +1,7 @@
 {
-  "name": "coai",
+  "name": "agenteur",
   "description": "Coordinate Claude Code and Codex sessions with durable tasks, messages, leases, and notifications.",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "author": {
     "name": "erwint"
   },
@@ -11,8 +11,8 @@
       {
         "name": "events",
         "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/run.sh watch",
-        "description": "coai messages and task updates for this session's agent",
-        "when": "on-skill-invoke:coai:join"
+        "description": "agenteur messages and task updates for this session's agent",
+        "when": "on-skill-invoke:agenteur:join"
       }
     ]
   }

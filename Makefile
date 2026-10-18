@@ -1,4 +1,4 @@
-BINARY := coai
+BINARY := agenteur
 VERSION := $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null | sed 's/^v//')
 LDFLAGS := -s -w -X main.version=$(VERSION)
 

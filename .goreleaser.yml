@@ -1,9 +1,9 @@
 version: 2
-project_name: coai
+project_name: agenteur
 builds:
-  - id: coai
+  - id: agenteur
     main: .
-    binary: coai
+    binary: agenteur
     # Static, libc-free binaries: the native linux/amd64 build otherwise links
     # the runner's glibc and fails on older distros. SQLite is pure Go.
     env: [CGO_ENABLED=0]
@@ -16,7 +16,7 @@ builds:
         goarch: arm64
 archives:
   # No version in the name: scripts/run.sh and the updater fetch
-  # releases/latest/download/coai_<os>_<arch>.tar.gz without knowing the tag.
+  # releases/latest/download/agenteur_<os>_<arch>.tar.gz without knowing the tag.
   - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:

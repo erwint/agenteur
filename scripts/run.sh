@@ -1,55 +1,50 @@
 #!/bin/sh
-# Starts coai for both plugins and the Claude monitor. Diagnostics go to
+# Starts agenteur for both plugins and the Claude monitor. Diagnostics go to
 # stderr: stdout is the MCP stream, or the monitor's event stream.
 set -eu
 root=${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}}
 
 # A build from scripts/build-plugin.sh runs local code during development.
-if [ -x "$root/bin/coai" ]; then
-  exec "$root/bin/coai" "$@"
+if [ -x "$root/bin/agenteur" ]; then
+  exec "$root/bin/agenteur" "$@"
 fi
 
 # Otherwise one shared install outside the versioned plugin caches, so Claude
-# Code and Codex run the same binary and coai's daily self-update reaches both.
-# Another coai on PATH is not used: a pre-0.3 release lacks the watch command.
+# Code and Codex run the same binary and its daily self-update reaches both.
+# Another agenteur on PATH is not used, so the version check below holds.
 dir="${HOME}/.local/bin"
+bin="$dir/agenteur"
 
 install() {
   os=$(uname -s | tr '[:upper:]' '[:lower:]')
-  case "$os" in darwin|linux) ;; *) echo "coai: unsupported operating system: $os" >&2; exit 1 ;; esac
+  case "$os" in darwin|linux) ;; *) echo "agenteur: unsupported operating system: $os" >&2; exit 1 ;; esac
   arch=$(uname -m)
-  case "$arch" in amd64|x86_64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) echo "coai: unsupported architecture: $arch" >&2; exit 1 ;; esac
+  case "$arch" in amd64|x86_64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) echo "agenteur: unsupported architecture: $arch" >&2; exit 1 ;; esac
   mkdir -p "$dir"
-  tmp=$(mktemp -d "$dir/.coai-install.XXXXXX")
+  tmp=$(mktemp -d "$dir/.agenteur-install.XXXXXX")
   trap 'rm -rf "$tmp"' EXIT
-  # After the rename to agenteur, the latest release only carries agenteur
-  # archives; its binary then runs as coai, as the self-update installs it.
-  for name in coai agenteur; do
-    if curl -fsL -o "$tmp/coai.tar.gz" "https://github.com/erwint/coai/releases/latest/download/${name}_${os}_${arch}.tar.gz"; then
-      tar -xzf "$tmp/coai.tar.gz" -C "$tmp" "$name"
-      [ "$name" = coai ] || mv "$tmp/$name" "$tmp/coai"
-      break
-    fi
-  done
-  [ -f "$tmp/coai" ] || { echo "coai: no release for ${os}/${arch}" >&2; exit 1; }
-  chmod 755 "$tmp/coai"
+  curl -fsSL "https://github.com/erwint/agenteur/releases/latest/download/agenteur_${os}_${arch}.tar.gz" | tar -xz -C "$tmp" agenteur
+  chmod 755 "$tmp/agenteur"
   # Rename into place so a concurrent first start never runs a partial file.
-  mv -f "$tmp/coai" "$dir/coai"
-  echo "coai: installed $("$dir/coai" version) to $dir/coai" >&2
+  # An agenteur link that coai's last update left points at ~/.local/bin/coai;
+  # the rename replaces the link, not the file old coai plugins still run.
+  mv -f "$tmp/agenteur" "$bin"
+  echo "agenteur: installed $("$bin" version) to $bin" >&2
   trap - EXIT
   rm -rf "$tmp"
 }
 
-# Install on first use, and replace a binary that cannot run at all (such as
-# the dynamically linked v0.3.0 on an older glibc), since it cannot update itself.
-if [ ! -x "$dir/coai" ] || ! "$dir/coai" version >/dev/null 2>&1; then
+# Install on first use, and replace a binary that cannot run at all, since it
+# cannot update itself.
+if [ ! -x "$bin" ] || ! "$bin" version >/dev/null 2>&1; then
   install
 fi
 
-# The plugin may rely on binary features newer than the installed coai, which
-# otherwise catches up only on its daily self-update. requires-coai names the
-# oldest release this plugin works with; an older install updates first.
-required=$(cat "$root/scripts/requires-coai" 2>/dev/null || true)
+# The plugin may rely on binary features newer than the installed agenteur,
+# which otherwise catches up only on its daily self-update.
+# requires-agenteur names the oldest release this plugin works with; an older
+# install updates first.
+required=$(cat "$root/scripts/requires-agenteur" 2>/dev/null || true)
 older() {
   awk -v a="$1" -v b="$2" 'BEGIN {
     split(a, x, "."); split(b, y, ".")
@@ -58,15 +53,15 @@ older() {
   }'
 }
 if [ -n "$required" ]; then
-  have=$("$dir/coai" version 2>/dev/null || echo 0.0.0)
+  have=$("$bin" version 2>/dev/null || echo 0.0.0)
   if older "$have" "$required"; then
-    "$dir/coai" update >&2 || true
-    have=$("$dir/coai" version 2>/dev/null || echo 0.0.0)
-    # Starting an older coai beats not starting: most tools still work.
+    "$bin" update >&2 || true
+    have=$("$bin" version 2>/dev/null || echo 0.0.0)
+    # Starting an older agenteur beats not starting: most tools still work.
     if older "$have" "$required"; then
-      echo "coai: this plugin needs coai $required or newer, but $have could not be updated" >&2
+      echo "agenteur: this plugin needs agenteur $required or newer, but $have could not be updated" >&2
     fi
   fi
 fi
 
-exec "$dir/coai" "$@"
+exec "$bin" "$@"

@@ -19,7 +19,7 @@ import (
 // Calls whose method is in failing are answered with that error message.
 func fakeCodex(t *testing.T, reject bool, failing ...string) (string, <-chan map[string]any) {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "coai-ws-")
+	dir, err := os.MkdirTemp("", "agenteur-ws-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,13 +161,13 @@ func TestCodexResultGoesToRequester(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The requester first hears that the worker joined, then the outcome.
-	if c := call(requests); !strings.Contains(fmt.Sprint(c), `coai agent worker joined session "s"`) {
+	if c := call(requests); !strings.Contains(fmt.Sprint(c), `agenteur agent worker joined session "s"`) {
 		t.Fatal(c)
 	}
 	c := call(requests)
 	p := c["params"].(map[string]any)
 	text := p["input"].([]any)[0].(map[string]any)["text"].(string)
-	if c["method"] != "thread/queue/add" || p["threadId"] != "requester-thread" || p["clientUserMessageId"] != "coai-task-"+id+"-completed" || !strings.Contains(text, `completed by worker: "done"`) {
+	if c["method"] != "thread/queue/add" || p["threadId"] != "requester-thread" || p["clientUserMessageId"] != "agenteur-task-"+id+"-completed" || !strings.Contains(text, `completed by worker: "done"`) {
 		t.Fatal(c)
 	}
 	// Delivered once: a second pass has nothing to send.

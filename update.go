@@ -18,7 +18,10 @@ import (
 // version is set from the release tag at build time (-X main.version=...).
 var version = "dev"
 
-const repo = "erwint/coai"
+const repo = "erwint/agenteur"
+
+// binaryName is the binary in each release archive, agenteur_<os>_<arch>.
+const binaryName = "agenteur"
 
 // releaseBase is a variable so tests can serve their own release.
 var releaseBase = "https://github.com/" + repo + "/releases"
@@ -34,9 +37,7 @@ var (
 
 // latestRelease reads the newest tag from the redirect on releases/latest,
 // which needs no API quota. It returns the releases URL the tag was found
-// under: after a repository rename (coai becomes agenteur), GitHub first
-// redirects to the new repository's releases/latest, and downloads should
-// come from there.
+// under, following a repository redirect if GitHub serves one first.
 func latestRelease(ctx context.Context) (base, tag string, err error) {
 	url := releaseBase + "/latest"
 	for hops := 0; hops < 5; hops++ {
@@ -44,7 +45,7 @@ func latestRelease(ctx context.Context) (base, tag string, err error) {
 		if err != nil {
 			return "", "", err
 		}
-		req.Header.Set("User-Agent", "coai/"+version)
+		req.Header.Set("User-Agent", "agenteur/"+version)
 		resp, err := noRedirect.Do(req)
 		if err != nil {
 			return "", "", err
@@ -112,30 +113,24 @@ func parseVersion(v string) ([3]int, bool) {
 	return out, true
 }
 
-// successor is the name coai is released under after the rename. Its
-// releases carry agenteur_<os>_<arch> archives holding an agenteur binary.
-const successor = "agenteur"
-
 // applyRelease downloads tag from base and renames it over exe. Writing beside
-// the target keeps the rename on one filesystem, and a coai that is already
-// running keeps the file it opened. A release of the successor replaces exe
-// all the same, so every plugin, session and launcher that runs coai moves
-// with it, and gains an agenteur link beside it.
+// the target keeps the rename on one filesystem, and a process that is
+// already running keeps the file it opened. An install that coai's bridge
+// release turned into agenteur still lives at ~/.local/bin/coai, where old
+// coai plugins start it; it is updated in place and gains an agenteur link
+// beside it for the agenteur plugins.
 func applyRelease(ctx context.Context, base, tag, exe string) error {
-	for _, name := range []string{"coai", successor} {
-		err := applyArchive(ctx, base, tag, name, exe)
-		if err == errNoArchive {
-			continue
-		}
-		if err == nil && name == successor {
-			link := filepath.Join(filepath.Dir(exe), successor)
-			if _, statErr := os.Lstat(link); os.IsNotExist(statErr) {
-				_ = os.Symlink(filepath.Base(exe), link)
-			}
-		}
-		return err
+	err := applyArchive(ctx, base, tag, binaryName, exe)
+	if err == errNoArchive {
+		return fmt.Errorf("release %s has no archive for %s/%s", tag, runtime.GOOS, runtime.GOARCH)
 	}
-	return fmt.Errorf("release %s has no archive for %s/%s", tag, runtime.GOOS, runtime.GOARCH)
+	if err == nil && filepath.Base(exe) != binaryName {
+		link := filepath.Join(filepath.Dir(exe), binaryName)
+		if _, statErr := os.Lstat(link); os.IsNotExist(statErr) {
+			_ = os.Symlink(filepath.Base(exe), link)
+		}
+	}
+	return err
 }
 
 var errNoArchive = fmt.Errorf("no such archive")
@@ -173,7 +168,7 @@ func applyArchive(ctx context.Context, base, tag, name, exe string) error {
 		if filepath.Base(h.Name) != name || h.Typeflag != tar.TypeReg {
 			continue
 		}
-		tmp, err := os.CreateTemp(filepath.Dir(exe), ".coai-update-*")
+		tmp, err := os.CreateTemp(filepath.Dir(exe), ".agenteur-update-*")
 		if err != nil {
 			return err
 		}
@@ -193,10 +188,10 @@ func applyArchive(ctx context.Context, base, tag, name, exe string) error {
 }
 
 // updateIfStale installs a newer release at most once a day. The plugins
-// install coai once and never again, so without this a machine keeps the first
+// install agenteur once and never again, so without this a machine keeps the first
 // version it downloaded. It fails silently: it runs beside the MCP server, and
 // a read-only install or an offline machine must not disturb the session.
-// COAI_NO_UPDATE=1 (or AGENTEUR_NO_UPDATE=1) turns it off.
+// AGENTEUR_NO_UPDATE=1 (or coai's COAI_NO_UPDATE=1) turns it off.
 func updateIfStale(ctx context.Context, stamp string) {
 	if setting("NO_UPDATE") != "" {
 		return
@@ -225,16 +220,40 @@ func updateIfStale(ctx context.Context, stamp string) {
 		exe = resolved
 	}
 	if err := applyRelease(ctx, base, tag, exe); err == nil {
-		fmt.Fprintf(os.Stderr, "coai: updated %s to %s; new sessions use it\n", exe, tag)
+		fmt.Fprintf(os.Stderr, "agenteur: updated %s to %s; new sessions use it\n", exe, tag)
 	}
 }
 
-// setting reads an environment setting under its successor name first
-// (AGENTEUR_STATE), then under coai's (COAI_STATE), so users can switch to the
-// new names before the rename.
+// setting reads an environment setting as AGENTEUR_<name>, falling back to
+// the name coai used (COAI_<name>), which keeps working.
 func setting(name string) string {
-	if v := os.Getenv(strings.ToUpper(successor) + "_" + name); v != "" {
+	if v := os.Getenv("AGENTEUR_" + name); v != "" {
 		return v
 	}
 	return os.Getenv("COAI_" + name)
 }
+
+// defaultState is the database used without AGENTEUR_STATE. A machine that
+// ran coai keeps coai's database: old coai processes share it while their
+// sessions last, so it is never moved.
+func defaultState() string {
+	d, _ := os.UserConfigDir()
+	if legacy := filepath.Join(d, "coai", "state.json"); fileExists(legacy) {
+		return legacy
+	}
+	return filepath.Join(d, "agenteur", "state.db")
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+// startedAsCoai reports whether an old coai plugin started this binary: the
+// bridge release installed agenteur as ~/.local/bin/coai, which those plugins
+// run by that name.
+func startedAsCoai() bool {
+	return filepath.Base(os.Args[0]) == "coai"
+}
+
+const switchNotice = "coai is now agenteur, and this session runs it through the old coai plugin, which keeps working. Tell the user once that they can switch. Claude Code: /plugin uninstall coai@coai, /plugin marketplace remove coai, /plugin marketplace add erwint/agenteur, /plugin install agenteur@agenteur. Codex: codex plugin remove coai@coai, codex plugin marketplace remove coai, codex plugin marketplace add erwint/agenteur, codex plugin add agenteur@agenteur. Sessions and history carry over."

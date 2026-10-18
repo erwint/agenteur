@@ -22,9 +22,9 @@ type Event struct {
 // for its assignment and its completion.
 func (e Event) Key() string {
 	if e.Kind == "task" {
-		return "coai-task-" + e.ID + "-" + e.Status
+		return "agenteur-task-" + e.ID + "-" + e.Status
 	}
-	return "coai-" + e.Kind + "-" + e.ID
+	return "agenteur-" + e.Kind + "-" + e.ID
 }
 
 // Line renders the event as a single self-describing line: Claude monitors
@@ -32,19 +32,19 @@ func (e Event) Key() string {
 func (e Event) Line() string {
 	switch {
 	case e.Kind == "message":
-		return fmt.Sprintf("coai message %s in session %q from %s: %s (reply with send_message; ack_message when handled)", e.ID, e.Session, e.From, strconv.Quote(e.Text))
+		return fmt.Sprintf("agenteur message %s in session %q from %s: %s (reply with send_message; ack_message when handled)", e.ID, e.Session, e.From, strconv.Quote(e.Text))
 	case e.Kind == noticeJoined && e.Text == "":
-		return fmt.Sprintf("coai agent %s joined session %q (no role given)", e.From, e.Session)
+		return fmt.Sprintf("agenteur agent %s joined session %q (no role given)", e.From, e.Session)
 	case e.Kind == noticeJoined:
-		return fmt.Sprintf("coai agent %s joined session %q with role: %s", e.From, e.Session, strconv.Quote(e.Text))
+		return fmt.Sprintf("agenteur agent %s joined session %q with role: %s", e.From, e.Session, strconv.Quote(e.Text))
 	case e.Kind == noticeRole:
-		return fmt.Sprintf("coai agent %s in session %q changed its role to: %s", e.From, e.Session, strconv.Quote(e.Text))
+		return fmt.Sprintf("agenteur agent %s in session %q changed its role to: %s", e.From, e.Session, strconv.Quote(e.Text))
 	case e.Kind == noticeLeft:
-		return fmt.Sprintf("coai agent %s left session %q", e.From, e.Session)
+		return fmt.Sprintf("agenteur agent %s left session %q", e.From, e.Session)
 	case e.Status == "pending":
-		return fmt.Sprintf("coai task %s in session %q assigned to you by %s: %s (claim_task, then complete_task or fail_task)", e.ID, e.Session, e.From, strconv.Quote(e.Text))
+		return fmt.Sprintf("agenteur task %s in session %q assigned to you by %s: %s (claim_task, then complete_task or fail_task)", e.ID, e.Session, e.From, strconv.Quote(e.Text))
 	default:
-		return fmt.Sprintf("coai task %s in session %q %s by %s: %s", e.ID, e.Session, e.Status, e.From, strconv.Quote(e.Text))
+		return fmt.Sprintf("agenteur task %s in session %q %s by %s: %s", e.ID, e.Session, e.Status, e.From, strconv.Quote(e.Text))
 	}
 }
 
@@ -137,13 +137,13 @@ func (b *Broker) ClaudeAgents(sessionID string, pid int) ([]Agent, error) {
 	return out, rows.Err()
 }
 
-// WatcherSeen records that coai watch is running for a Claude session.
+// WatcherSeen records that agenteur watch is running for a Claude session.
 func (b *Broker) WatcherSeen(sessionID string, pid int) error {
 	_, err := b.db.Exec(`INSERT INTO watchers(claude_session,claude_pid,seen) VALUES(?,?,?) ON CONFLICT(claude_session,claude_pid) DO UPDATE SET seen=excluded.seen`, sessionID, pid, time.Now().Unix())
 	return err
 }
 
-// Watching reports whether coai watch ran for a Claude session within the
+// Watching reports whether agenteur watch ran for a Claude session within the
 // last few seconds. Without it, the session's events are never shown.
 func (b *Broker) Watching(sessionID string, pid int) (bool, error) {
 	var n int

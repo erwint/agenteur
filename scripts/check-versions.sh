@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 
 # The files the plugins run or read at runtime. Changing any of them changes
 # what users get, so it needs a new plugin version. Keep in step with AGENTS.md.
-PLUGIN_FILES=".claude-plugin/plugin.json .codex-plugin/plugin.json .claude-mcp.json scripts/run.sh scripts/run-codex.sh scripts/requires-coai skills"
+PLUGIN_FILES=".claude-plugin/plugin.json .codex-plugin/plugin.json .claude-mcp.json scripts/run.sh scripts/run-codex.sh scripts/requires-agenteur skills"
 
 fail=0
 error() { echo "check-versions: $*" >&2; fail=1; }
@@ -37,19 +37,19 @@ for m in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
   fi
 done
 
-# Users install coai@coai in either client.
+# Users install agenteur@agenteur in either client.
 for m in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
   name=$(perl -ne 'if (/"name"\s*:\s*"([^"]*)"/) { print $1; exit }' "$m")
-  [ "$name" = coai ] || error "$m names the marketplace $name, not coai"
+  [ "$name" = agenteur ] || error "$m names the marketplace $name, not agenteur"
 done
 
 # A plugin must never require a binary nobody can download yet.
-required=$(cat scripts/requires-coai)
+required=$(cat scripts/requires-agenteur)
 latest=$(git tag -l 'v[0-9]*' --sort=-v:refname | head -n 1)
 if [ -z "$latest" ]; then
-  error "no release tags found (fetch with tags to check scripts/requires-coai)"
+  error "no release tags found (fetch with tags to check scripts/requires-agenteur)"
 elif older "${latest#v}" "$required"; then
-  error "scripts/requires-coai is $required, but the newest release is $latest: release the binary first"
+  error "scripts/requires-agenteur is $required, but the newest release is $latest: release the binary first"
 fi
 
 base=${1:-}
@@ -63,5 +63,5 @@ if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
   fi
 fi
 
-[ "$fail" = 0 ] && echo "check-versions: plugin $claude, requires coai $required, newest release $latest"
+[ "$fail" = 0 ] && echo "check-versions: plugin $claude, requires agenteur $required, newest release $latest"
 exit "$fail"

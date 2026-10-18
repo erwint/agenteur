@@ -1,9 +1,9 @@
 {
-  "name": "coai",
-  "interface": { "displayName": "CoAI" },
+  "name": "agenteur",
+  "interface": { "displayName": "agenteur" },
   "plugins": [
     {
-      "name": "coai",
+      "name": "agenteur",
       "source": { "source": "local", "path": "./" },
       "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
       "category": "Productivity"

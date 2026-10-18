@@ -20,7 +20,7 @@ func watch(b *Broker) error {
 	sid := os.Getenv("CLAUDE_CODE_SESSION_ID")
 	pid, _ := strconv.Atoi(os.Getenv("CLAUDE_PID"))
 	if sid == "" && pid == 0 {
-		return errors.New("coai watch: not running inside a Claude Code session")
+		return errors.New("agenteur watch: not running inside a Claude Code session")
 	}
 	// Report a closed stdout as a write error instead of dying on SIGPIPE, so
 	// the event that failed to print is returned to the queue.

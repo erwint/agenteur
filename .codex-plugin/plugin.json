@@ -1,30 +1,30 @@
 {
-  "name": "coai",
+  "name": "agenteur",
   "description": "Coordinate Claude Code and Codex sessions with durable tasks, messages, leases, and notifications.",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "author": {
     "name": "erwint",
     "url": "https://github.com/erwint"
   },
   "license": "MIT",
-  "repository": "https://github.com/erwint/coai",
+  "repository": "https://github.com/erwint/agenteur",
   "mcpServers": {
-    "coai": {
+    "agenteur": {
       "command": "sh",
-      "args": ["-c", "for r in \"${PLUGIN_ROOT:-.}\" . ..; do [ -f \"$r/scripts/run-codex.sh\" ] && exec sh \"$r/scripts/run-codex.sh\"; done; echo \"coai: scripts/run-codex.sh not found from $PWD\" >&2; exit 1"],
+      "args": ["-c", "for r in \"${PLUGIN_ROOT:-.}\" . ..; do [ -f \"$r/scripts/run-codex.sh\" ] && exec sh \"$r/scripts/run-codex.sh\"; done; echo \"agenteur: scripts/run-codex.sh not found from $PWD\" >&2; exit 1"],
       "cwd": ".",
-      "env_vars": ["COAI_STATE", "COAI_CODEX_SOCKET", "COAI_NO_UPDATE", "AGENTEUR_STATE", "AGENTEUR_CODEX_SOCKET", "AGENTEUR_NO_UPDATE", "CODEX_HOME", "XDG_CONFIG_HOME"],
+      "env_vars": ["AGENTEUR_STATE", "AGENTEUR_CODEX_SOCKET", "AGENTEUR_NO_UPDATE", "COAI_STATE", "COAI_CODEX_SOCKET", "COAI_NO_UPDATE", "CODEX_HOME", "XDG_CONFIG_HOME"],
       "startup_timeout_sec": 60
     }
   },
   "interface": {
-    "displayName": "CoAI Agent Coordination",
+    "displayName": "agenteur",
     "shortDescription": "Coordinate Claude and Codex sessions",
     "category": "Productivity",
     "longDescription": "Coordinate shared work through durable tasks and messages, with verified Codex app-server result delivery.",
     "developerName": "erwint",
     "defaultPrompt": [
-      "Join a shared CoAI coordination session."
+      "Join a shared agenteur session."
     ],
     "capabilities": [
       "Read",

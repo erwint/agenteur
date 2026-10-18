@@ -1,10 +1,10 @@
 {
-  "name": "coai",
+  "name": "agenteur",
   "owner": { "name": "erwint", "url": "https://github.com/erwint" },
   "plugins": [
     {
-      "name": "coai",
-      "source": { "source": "github", "repo": "erwint/coai" },
+      "name": "agenteur",
+      "source": { "source": "github", "repo": "erwint/agenteur" },
       "description": "Coordinate Claude Code and Codex sessions with durable tasks, messages, leases, and notifications.",
       "category": "Productivity"
     }

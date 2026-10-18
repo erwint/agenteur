@@ -50,8 +50,8 @@ func tarball(name string, binary []byte) []byte {
 
 func fakeReleases(t *testing.T, tag string, binary []byte) {
 	t.Helper()
-	archive := bytes.NewBuffer(tarball("coai", binary))
-	asset := fmt.Sprintf("/download/%s/coai_%s_%s.tar.gz", tag, runtime.GOOS, runtime.GOARCH)
+	archive := bytes.NewBuffer(tarball(binaryName, binary))
+	asset := fmt.Sprintf("/download/%s/agenteur_%s_%s.tar.gz", tag, runtime.GOOS, runtime.GOARCH)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/latest":
@@ -74,7 +74,7 @@ func TestApplyLatestRelease(t *testing.T) {
 	if err != nil || tag != "v0.4.0" || base != releaseBase {
 		t.Fatalf("%q %q %v", base, tag, err)
 	}
-	exe := filepath.Join(t.TempDir(), "coai")
+	exe := filepath.Join(t.TempDir(), binaryName)
 	if err := os.WriteFile(exe, []byte("old binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -109,18 +109,18 @@ func TestUpdateCheckIsThrottled(t *testing.T) {
 	}
 }
 
-// After the repository is renamed to agenteur, GitHub redirects the old
-// releases/latest to the new repository's, whose releases only carry
-// agenteur archives. coai must follow both and install agenteur in its place.
-func TestUpdateFollowsRenameToSuccessor(t *testing.T) {
-	archive := tarball(successor, []byte("agenteur binary"))
-	asset := fmt.Sprintf("/erwint/agenteur/releases/download/v0.5.0/agenteur_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+// coai's bridge release left agenteur at ~/.local/bin/coai, where old coai
+// plugins run it. Updating must keep that path working and add an agenteur
+// link for the agenteur plugins, following a repository redirect on the way.
+func TestUpdateKeepsCoaiInstallAndLinksAgenteur(t *testing.T) {
+	archive := tarball(binaryName, []byte("agenteur 2"))
+	asset := fmt.Sprintf("/erwint/agenteur/releases/download/v2.0.0/agenteur_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/erwint/coai/releases/latest":
+		case "/erwint/old/releases/latest":
 			http.Redirect(w, r, "/erwint/agenteur/releases/latest", http.StatusMovedPermanently)
 		case "/erwint/agenteur/releases/latest":
-			http.Redirect(w, r, "/erwint/agenteur/releases/tag/v0.5.0", http.StatusFound)
+			http.Redirect(w, r, "/erwint/agenteur/releases/tag/v2.0.0", http.StatusFound)
 		case asset:
 			_, _ = w.Write(archive)
 		default:
@@ -129,30 +129,49 @@ func TestUpdateFollowsRenameToSuccessor(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	old := releaseBase
-	releaseBase = srv.URL + "/erwint/coai/releases"
+	releaseBase = srv.URL + "/erwint/old/releases"
 	t.Cleanup(func() { releaseBase = old })
 
 	base, tag, err := latestRelease(context.Background())
-	if err != nil || tag != "v0.5.0" || base != srv.URL+"/erwint/agenteur/releases" {
+	if err != nil || tag != "v2.0.0" || base != srv.URL+"/erwint/agenteur/releases" {
 		t.Fatalf("%q %q %v", base, tag, err)
 	}
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "coai")
-	if err := os.WriteFile(exe, []byte("coai binary"), 0o755); err != nil {
+	if err := os.WriteFile(exe, []byte("agenteur 1"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := applyRelease(context.Background(), base, tag, exe); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := os.ReadFile(exe); string(got) != "agenteur binary" {
-		t.Fatalf("coai not replaced by agenteur: %q", got)
-	}
-	if got, _ := os.ReadFile(filepath.Join(dir, successor)); string(got) != "agenteur binary" {
-		t.Fatalf("no agenteur link beside coai: %q", got)
+	for _, p := range []string{exe, filepath.Join(dir, binaryName)} {
+		if got, _ := os.ReadFile(p); string(got) != "agenteur 2" {
+			t.Fatalf("%s: %q", p, got)
+		}
 	}
 }
 
-func TestSettingPrefersSuccessorName(t *testing.T) {
+func TestDefaultStateKeepsCoaiDatabase(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("HOME", cfg)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	d, _ := os.UserConfigDir()
+	if got := defaultState(); got != filepath.Join(d, "agenteur", "state.db") {
+		t.Fatalf("fresh machine: %s", got)
+	}
+	legacy := filepath.Join(d, "coai", "state.json")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := defaultState(); got != legacy {
+		t.Fatalf("machine that ran coai: %s", got)
+	}
+}
+
+func TestSettingFallsBackToCoaiName(t *testing.T) {
 	t.Setenv("COAI_STATE", "old")
 	if got := setting("STATE"); got != "old" {
 		t.Fatal(got)

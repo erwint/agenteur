@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "coai": {
+    "agenteur": {
       "command": "${CLAUDE_PLUGIN_ROOT}/scripts/run.sh"
     }
   }

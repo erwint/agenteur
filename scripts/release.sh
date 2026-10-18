@@ -7,7 +7,7 @@
 #
 #   scripts/release.sh plugin X.Y.Z [--requires A.B.C]
 #       Sets the plugin version in both manifests (and, with --requires,
-#       scripts/requires-coai), checks the rules, commits, and tags the commit
+#       scripts/requires-agenteur), checks the rules, commits, and tags the commit
 #       plugin-vX.Y.Z. Push both yourself.
 set -eu
 cd "$(dirname "$0")/.."
@@ -35,7 +35,7 @@ binary)
   fi
   git tag -a "$tag" -m "Release $tag"
   git push origin "$tag"
-  asset="https://github.com/erwint/coai/releases/download/$tag/coai_linux_amd64.tar.gz"
+  asset="https://github.com/erwint/agenteur/releases/download/$tag/agenteur_linux_amd64.tar.gz"
   echo "release: waiting for GoReleaser to publish $tag"
   i=0
   until curl -fsIL -o /dev/null "$asset"; do
@@ -66,9 +66,9 @@ plugin)
     # Only the first "version" is the manifest's own.
     V="$version" perl -0pi -e 's/"version"\s*:\s*"[^"]*"/"version": "$ENV{V}"/' "$m"
   done
-  [ -z "$requires" ] || echo "$requires" > scripts/requires-coai
+  [ -z "$requires" ] || echo "$requires" > scripts/requires-agenteur
   scripts/check-versions.sh
-  git commit -q -am "Release plugin $version" -m "Plugin $version requires coai $(cat scripts/requires-coai) or newer."
+  git commit -q -am "Release plugin $version" -m "Plugin $version requires agenteur $(cat scripts/requires-agenteur) or newer."
   # Plugin tags never start with v, so they don't trigger a binary release.
   git tag -a "$tag" -m "Release plugin $version"
   echo "release: committed and tagged plugin $version; push with: git push origin HEAD $tag"

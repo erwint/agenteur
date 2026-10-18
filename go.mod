@@ -1,4 +1,4 @@
-module coai
+module agenteur
 
 go 1.27.0
 
