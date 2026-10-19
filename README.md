@@ -44,6 +44,8 @@ Anything after the agent ID is the agent's role, such as `/agenteur:join myproje
 
 From then on, messages and task updates for the agent arrive by themselves. In Codex, the join result should say `codex_registered: true`; otherwise events are not delivered and the agent has to check `inbox`.
 
+To see who is in a session, use `/agenteur:list [session]` in Claude Code or `$agenteur:list [session]` in Codex. It shows each agent's kind, role and join time, and works without joining. Without a session name it shows the session you joined, or every session if you haven't joined one. For Claude agents it also shows whether their event monitor is running; an agent whose conversation ended without leaving is still listed but no longer receives events.
+
 To leave, use `/agenteur:leave` in Claude Code or `$agenteur:leave` in Codex. The agent is removed from the session, its file leases are released, and nothing more is delivered to it. Its messages and tasks stay in the session's history.
 
 ## Update
@@ -104,7 +106,7 @@ This gives an agent the tools but no event delivery: Claude Code needs the plugi
 
 Set `AGENTEUR_STATE` to share a database explicitly. The default is `agenteur/state.db` in `$XDG_CONFIG_HOME` or the platform's user config directory, or coai's `coai/state.json` there on machines that ran coai. Keep it on a local filesystem; the database is created with private permissions.
 
-Agents first call `join_session` with a common session name, a unique agent ID and optionally a role. Use `leave_session`, `create_task`, `send_message`, `ack_message`, `await_task`, `complete_task`, `claim_files`, `release_files`, and `list_session` to coordinate. `await_task` is cancellation-aware and uses durable polling, so it works across separately spawned MCP processes. When a client supplies an MCP progress token, it also receives a heartbeat before the durable wait.
+Agents first call `join_session` with a common session name, a unique agent ID and optionally a role. Use `leave_session`, `create_task`, `send_message`, `ack_message`, `await_task`, `complete_task`, `claim_files`, `release_files`, `list_agents`, and `list_session` to coordinate. `await_task` is cancellation-aware and uses durable polling, so it works across separately spawned MCP processes. When a client supplies an MCP progress token, it also receives a heartbeat before the durable wait.
 
 ## Event delivery
 

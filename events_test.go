@@ -223,3 +223,39 @@ func TestOthersHearJoinsRoleChangesAndLeaves(t *testing.T) {
 		t.Fatalf("notices in session history: %v", st.Messages)
 	}
 }
+
+func TestListAgentsGroupsSessionsAndShowsMonitors(t *testing.T) {
+	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
+	defer b.db.Close()
+	for _, a := range []Agent{
+		{ID: "web", Session: "s", Kind: "claude", ClaudePID: 42, Role: "owns the web frontend"},
+		{ID: "gone", Session: "s", Kind: "claude", ClaudePID: 43},
+		{ID: "api", Session: "t", Kind: "codex"},
+	} {
+		if err := b.Join(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := b.WatcherSeen("", 42); err != nil {
+		t.Fatal(err)
+	}
+	all, err := participants(b, "")
+	if err != nil || len(all) != 2 || all[0]["session"] != "s" || all[1]["session"] != "t" {
+		t.Fatalf("%v %v", all, err)
+	}
+	s := all[0]["agents"].([]map[string]any)
+	if len(s) != 2 || s[0]["agent"] != "web" || s[0]["role"] != "owns the web frontend" || s[0]["events_monitor"] != true || s[1]["events_monitor"] != false {
+		t.Fatal(s)
+	}
+	if _, ok := all[1]["agents"].([]map[string]any)[0]["events_monitor"]; ok {
+		t.Fatal("codex agent reported a Claude monitor")
+	}
+	one, err := participants(b, "t")
+	if err != nil || len(one) != 1 || one[0]["session"] != "t" {
+		t.Fatalf("%v %v", one, err)
+	}
+	none, err := participants(b, "missing")
+	if err != nil || none == nil || len(none) != 0 {
+		t.Fatalf("%v %v", none, err)
+	}
+}

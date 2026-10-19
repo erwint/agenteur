@@ -248,6 +248,33 @@ func (b *Broker) Await(c context.Context, i string) (Task, error) {
 		}
 	}
 }
+
+// Agents lists the agents of one session, or of all sessions, ordered by
+// session and join time.
+func (b *Broker) Agents(s string) ([]Agent, error) {
+	q := `SELECT session,id,kind,cwd,joined,claude_session,claude_pid,role FROM agents`
+	a := []any{}
+	if s != "" {
+		q += ` WHERE session=?`
+		a = append(a, s)
+	}
+	r, e := b.db.Query(q+` ORDER BY session,joined`, a...)
+	if e != nil {
+		return nil, e
+	}
+	defer r.Close()
+	var out []Agent
+	for r.Next() {
+		var x Agent
+		var j string
+		if e = r.Scan(&x.Session, &x.ID, &x.Kind, &x.CWD, &j, &x.ClaudeSession, &x.ClaudePID, &x.Role); e != nil {
+			return nil, e
+		}
+		x.Joined, _ = time.Parse(time.RFC3339Nano, j)
+		out = append(out, x)
+	}
+	return out, r.Err()
+}
 func (b *Broker) Snapshot(s string) (state, error) {
 	var o state
 	q := `SELECT session,id,kind,cwd,COALESCE(thread_id,''),COALESCE(socket,''),joined,claude_session,claude_pid,role FROM agents`
