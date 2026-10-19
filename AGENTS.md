@@ -40,7 +40,7 @@ CI (`.github/workflows/ci.yml`) runs test, vet, and build. Releases are made by 
 
 agenteur was called coai. coai's final release in `erwint/coai` (v0.5.0, the bridge) packages agenteur as `coai_<os>_<arch>` archives, so every installed coai updated itself into agenteur at `~/.local/bin/coai`, where the old coai plugins still start it. Keep these promises to those installs:
 
-- **Running as coai:** the binary must keep working when started as `coai` by an old plugin (`startedAsCoai`). Then `join_session` adds a `notice` telling the agent how to switch plugins, and the MCP instructions ask it to pass that on.
+- **Running as coai:** the binary must keep working when started as `coai` by an old plugin (`startedAsCoai`). Then `join_session` adds a `notice` (`switchNotice`, per client kind) asking the agent to offer the switch and, once the user agrees, run the client's plugin commands, installing agenteur before removing coai. The MCP instructions ask it to pass the notice on.
 - **Updates:** an install named `coai` updates in place from `erwint/agenteur` and gains an `agenteur` symlink beside it (`applyRelease`). Releases must keep publishing `agenteur_<os>_<arch>.tar.gz` holding a binary named `agenteur`.
 - **Database:** coai and agenteur processes may share one database, so `defaultState` keeps using `<UserConfigDir>/coai/state.json` when it exists and never moves it; new machines get `<UserConfigDir>/agenteur/state.db`. Schema changes only go through `migrate()`, so older processes keep working.
 - **Settings:** `setting()` reads `AGENTEUR_<NAME>`, then coai's `COAI_<NAME>`; keep accepting both, and list every name the Codex launcher needs in `env_vars`.

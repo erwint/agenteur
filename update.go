@@ -256,4 +256,16 @@ func startedAsCoai() bool {
 	return filepath.Base(os.Args[0]) == "coai"
 }
 
-const switchNotice = "coai is now agenteur, and this session runs it through the old coai plugin, which keeps working. Tell the user once that they can switch. Claude Code: /plugin uninstall coai@coai, /plugin marketplace remove coai, /plugin marketplace add erwint/agenteur, /plugin install agenteur@agenteur. Codex: codex plugin remove coai@coai, codex plugin marketplace remove coai, codex plugin marketplace add erwint/agenteur, codex plugin add agenteur@agenteur. Sessions and history carry over."
+// switchNotice asks the agent of an old coai plugin to offer the switch to
+// the agenteur plugin and, once the user agrees, run it. Neither client can
+// move an installed plugin to another marketplace, so the agent does it. The
+// agenteur plugin is installed before the coai one is removed, so a failure
+// part way leaves a working plugin.
+func switchNotice(kind string) string {
+	const head = "coai is now agenteur. This session runs it through the old coai plugin, which keeps working but no longer gets updates. Tell the user once, and offer to switch them to the agenteur plugin by running these shell commands for them. Run them only after the user agrees, one at a time, stopping at the first that fails: "
+	const tail = " Sessions and history carry over; the new skills are agenteur:join, agenteur:leave and agenteur:list."
+	if kind == "codex" {
+		return head + "codex plugin marketplace add erwint/agenteur; codex plugin add agenteur@agenteur; codex plugin remove coai@coai; codex plugin marketplace remove coai. Then the user restarts Codex." + tail
+	}
+	return head + "claude plugin marketplace add erwint/agenteur; claude plugin install agenteur@agenteur; claude plugin uninstall coai@coai; claude plugin marketplace remove coai. Then the user restarts Claude Code, rejoins with /agenteur:join, and can turn on updates under /plugin, Manage marketplaces, agenteur, Enable auto-update." + tail
+}

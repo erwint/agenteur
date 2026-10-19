@@ -173,7 +173,7 @@ func main() {
 		if err == nil {
 			out["others"] = peers(b, a.Session, a.Agent)
 			if startedAsCoai() {
-				out["notice"] = switchNotice
+				out["notice"] = switchNotice(agent.Kind)
 			}
 		}
 		if err == nil && agent.ClaudeSession != "" {

@@ -52,14 +52,25 @@ To leave, use `/agenteur:leave` in Claude Code or `$agenteur:leave` in Codex. Th
 
 The plugin and the binary update separately.
 
-Plugin, in Claude Code:
+Codex updates the plugin by itself: each time it starts, it upgrades git marketplaces and reinstalls plugins whose version changed. Claude Code does so only once auto-update is on for the marketplace, which it is not by default for marketplaces you add: open `/plugin`, Manage marketplaces, `agenteur`, Enable auto-update. Or set it in `~/.claude/settings.json`, which is easy to copy between machines:
+
+```json
+"extraKnownMarketplaces": {
+  "agenteur": {
+    "source": { "source": "github", "repo": "erwint/agenteur" },
+    "autoUpdate": true
+  }
+}
+```
+
+To update the plugin by hand, in Claude Code:
 
 ```text
 /plugin marketplace update agenteur
 /plugin update agenteur@agenteur
 ```
 
-Plugin, in Codex:
+In Codex:
 
 ```bash
 codex plugin marketplace upgrade agenteur
@@ -72,25 +83,29 @@ The binary updates itself: agenteur checks for a newer release at most once a da
 
 ## Moving from coai
 
-coai's last release turned every installed coai into agenteur: `~/.local/bin/coai` now runs agenteur, so sessions started by the coai plugins keep working, and their join results tell the agent how to switch. Switching takes one step per client:
+coai is now agenteur, with a new repository, marketplace and plugin: `coai@coai` from `erwint/coai` becomes `agenteur@agenteur` from `erwint/agenteur`. Neither Claude Code nor Codex moves an installed plugin to another marketplace, and the coai plugin gets no further updates, so each machine switches once.
 
-Claude Code:
+The binary has already moved by itself: coai's last release installs agenteur as `~/.local/bin/coai`, so sessions started by the coai plugins keep working. When you join a session through the coai plugin, the agent offers to switch the plugins for you and runs the commands below once you agree.
 
-```text
-/plugin uninstall coai@coai
-/plugin marketplace remove coai
-/plugin marketplace add erwint/agenteur
-/plugin install agenteur@agenteur
-```
-
-Codex:
+To switch by hand, in a shell (install agenteur first, so a failed step leaves a working plugin):
 
 ```bash
-codex plugin remove coai@coai
-codex plugin marketplace remove coai
+# Claude Code
+claude plugin marketplace add erwint/agenteur
+claude plugin install agenteur@agenteur
+claude plugin uninstall coai@coai
+claude plugin marketplace remove coai
+
+# Codex
 codex plugin marketplace add erwint/agenteur
 codex plugin add agenteur@agenteur
+codex plugin remove coai@coai
+codex plugin marketplace remove coai
 ```
+
+Or inside Claude Code: `/plugin marketplace add erwint/agenteur`, `/plugin install agenteur@agenteur`, `/plugin uninstall coai@coai`, `/plugin marketplace remove coai`.
+
+Then restart open sessions and join again with `/agenteur:join` (Claude Code) or `$agenteur:join` (Codex). The skills are now `agenteur:join`, `agenteur:leave` and `agenteur:list`. To have Claude Code keep the plugin up to date, turn on auto-update under `/plugin`, Manage marketplaces, `agenteur`, Enable auto-update; Codex upgrades git marketplaces each time it starts.
 
 Remove the coai plugin rather than keeping both: each would start its own server with the same tools. Sessions, agents, messages and tasks carry over, because agenteur keeps using coai's database (`<config>/coai/state.json`) on machines that have one. The `COAI_STATE`, `COAI_CODEX_SOCKET` and `COAI_NO_UPDATE` settings keep working; their `AGENTEUR_` names take precedence. Event lines now start with `agenteur` instead of `coai`.
 

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -179,5 +180,19 @@ func TestSettingFallsBackToCoaiName(t *testing.T) {
 	t.Setenv("AGENTEUR_STATE", "new")
 	if got := setting("STATE"); got != "new" {
 		t.Fatal(got)
+	}
+}
+
+func TestSwitchNoticeNamesTheClientsCommands(t *testing.T) {
+	codex, claude := switchNotice("codex"), switchNotice("claude")
+	if !strings.Contains(codex, "codex plugin add agenteur@agenteur") || strings.Contains(codex, "claude plugin") {
+		t.Fatal(codex)
+	}
+	if !strings.Contains(claude, "claude plugin install agenteur@agenteur") || strings.Contains(claude, "codex plugin") {
+		t.Fatal(claude)
+	}
+	// Installing agenteur comes before removing coai.
+	if strings.Index(claude, "install agenteur") > strings.Index(claude, "uninstall coai") {
+		t.Fatal("coai removed before agenteur is installed")
 	}
 }
