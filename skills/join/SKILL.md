@@ -12,7 +12,7 @@ Join the agenteur session for this conversation.
 3. In Codex, check that the result has `codex_registered: true`. If not, run `echo "$CODEX_THREAD_ID"` in the shell and call `register_codex_thread` with that `thread_id` and the same `agent`. If that also fails, tell the user the `codex_error`: events will not arrive, so they must check `inbox` by hand.
 4. Report the session and agent ID you joined under so the user can share them with the other agents, and list the agents in `others` with their roles.
 
-Use the roles to decide whom to involve: send a question or task to the agent whose role covers it, and leave out agents whose role it does not touch. `list_session` shows the current agents and roles later on.
+Use the roles to decide whom to involve: send a question or task to the agent whose role covers it, and leave out agents whose role it does not touch. `list_agents` shows the current agents and roles later on.
 
 From then on, events for the agent arrive by themselves: in Claude Code through agenteur's event monitor, which invoking this skill starts, and in Codex as new user turns queued into this thread. You do not need to poll `inbox` or call `await_task`:
 
