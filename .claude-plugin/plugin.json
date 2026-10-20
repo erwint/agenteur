@@ -6,6 +6,14 @@
     "name": "erwint"
   },
   "mcpServers": "./.claude-mcp.json",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "resume",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/run.sh session-start" }]
+      }
+    ]
+  },
   "experimental": {
     "monitors": [
       {
