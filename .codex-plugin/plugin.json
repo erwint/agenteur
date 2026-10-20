@@ -1,7 +1,7 @@
 {
   "name": "agenteur",
   "description": "Coordinate Claude Code and Codex sessions with durable tasks, messages, leases, and notifications.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": {
     "name": "erwint",
     "url": "https://github.com/erwint"
