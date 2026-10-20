@@ -33,6 +33,12 @@ func codexSocket(socket string) string {
 // Each exchange has a deadline and its own connection; a disconnected Codex
 // must not block durable task completion indefinitely.
 func codexCall(ctx context.Context, socket, method string, params any) error {
+	_, err := codexRequest(ctx, socket, method, params)
+	return err
+}
+
+// codexRequest is codexCall that also returns the response's result.
+func codexRequest(ctx context.Context, socket, method string, params any) (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	socket = codexSocket(socket)
@@ -41,7 +47,7 @@ func codexCall(ctx context.Context, socket, method string, params any) error {
 	defer tr.CloseIdleConnections()
 	c, _, err := websocket.Dial(ctx, "ws://localhost", &websocket.DialOptions{HTTPClient: &http.Client{Transport: tr}})
 	if err != nil {
-		return fmt.Errorf("Codex app-server %s: %w", socket, err)
+		return nil, fmt.Errorf("Codex app-server %s: %w", socket, err)
 	}
 	defer c.CloseNow()
 	send := func(v any) error {
@@ -51,45 +57,46 @@ func codexCall(ctx context.Context, socket, method string, params any) error {
 		}
 		return c.Write(ctx, websocket.MessageText, b)
 	}
-	receive := func(id int) error {
+	receive := func(id int) (json.RawMessage, error) {
 		for {
 			_, data, err := c.Read(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			var v struct {
-				ID    *int            `json:"id"`
-				Error json.RawMessage `json:"error"`
+				ID     *int            `json:"id"`
+				Result json.RawMessage `json:"result"`
+				Error  json.RawMessage `json:"error"`
 			}
 			if err := json.Unmarshal(data, &v); err != nil {
-				return err
+				return nil, err
 			}
 			if v.ID == nil || *v.ID != id {
 				continue
 			}
 			if len(v.Error) != 0 && string(v.Error) != "null" {
-				return fmt.Errorf("Codex app-server: %s", v.Error)
+				return nil, fmt.Errorf("Codex app-server: %s", v.Error)
 			}
-			return nil
+			return v.Result, nil
 		}
 	}
 	if err = send(map[string]any{"id": 1, "method": "initialize", "params": map[string]any{
 		"clientInfo":   map[string]string{"name": "agenteur", "version": version},
 		"capabilities": map[string]bool{"experimentalApi": true},
 	}}); err != nil {
-		return err
+		return nil, err
 	}
-	if err = receive(1); err != nil {
-		return err
+	if _, err = receive(1); err != nil {
+		return nil, err
 	}
 	if err = send(map[string]any{"method": "initialized"}); err != nil {
-		return err
+		return nil, err
 	}
 	if method == "" {
-		return nil
+		return nil, nil
 	}
 	if err = send(map[string]any{"id": 2, "method": method, "params": params}); err != nil {
-		return err
+		return nil, err
 	}
 	return receive(2)
 }
@@ -145,6 +152,70 @@ func deliverCodex(ctx context.Context, b *Broker, a Agent) error {
 		if err := queueCodex(ctx, a.Socket, a.ThreadID, e.Key(), e.Line()); err != nil {
 			_ = b.UnclaimEvent(e)
 			return err
+		}
+	}
+	return nil
+}
+
+// loadedThreads returns the threads the app-server has loaded. Those are the
+// ones open in a Codex session: the app-server unloads a thread once no client
+// subscribes to it.
+func loadedThreads(ctx context.Context, socket string) (map[string]bool, error) {
+	loaded := map[string]bool{}
+	params := map[string]any{}
+	for {
+		r, err := codexRequest(ctx, socket, "thread/loaded/list", params)
+		if err != nil {
+			return nil, err
+		}
+		var page struct {
+			Data       []string `json:"data"`
+			NextCursor *string  `json:"nextCursor"`
+		}
+		if err := json.Unmarshal(r, &page); err != nil {
+			return nil, err
+		}
+		for _, id := range page.Data {
+			loaded[id] = true
+		}
+		if page.NextCursor == nil || *page.NextCursor == "" {
+			return loaded, nil
+		}
+		params = map[string]any{"cursor": *page.NextCursor}
+	}
+}
+
+// deliverOpenThreads pushes events to every registered Codex agent whose
+// thread is open. A resumed thread gets a new MCP process that has not joined,
+// so this is what reaches it. Events are claimed, so any number of processes
+// may do this at once.
+func deliverOpenThreads(ctx context.Context, b *Broker) error {
+	agents, err := b.CodexAgents()
+	if err != nil {
+		return err
+	}
+	waiting := map[string][]Agent{}
+	for _, a := range agents {
+		events, err := b.PendingEvents(a.Session, a.ID)
+		if err != nil {
+			return err
+		}
+		if len(events) > 0 {
+			waiting[a.Socket] = append(waiting[a.Socket], a)
+		}
+	}
+	for socket, agents := range waiting {
+		loaded, err := loadedThreads(ctx, socket)
+		if err != nil {
+			return err
+		}
+		for _, a := range agents {
+			if !loaded[a.ThreadID] {
+				continue
+			}
+			if err := deliverCodex(ctx, b, a); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

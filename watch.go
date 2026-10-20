@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -31,6 +32,31 @@ func watch(b *Broker) error {
 		}
 		time.Sleep(time.Second)
 	}
+}
+
+// sessionStart runs as the plugin's SessionStart hook. When Claude Code
+// resumes a conversation whose agent is still in a session, it submits the
+// join skill again: a monitor started by a skill does not survive a restart,
+// and invoking the skill starts agenteur watch anew.
+func sessionStart(b *Broker, in io.Reader, out io.Writer) error {
+	var hook struct {
+		SessionID string `json:"session_id"`
+		Source    string `json:"source"`
+	}
+	if err := json.NewDecoder(in).Decode(&hook); err != nil {
+		return err
+	}
+	if hook.Source != "resume" || hook.SessionID == "" {
+		return nil
+	}
+	agents, err := b.ClaudeAgents(hook.SessionID, 0)
+	if err != nil || len(agents) == 0 {
+		return err
+	}
+	return json.NewEncoder(out).Encode(map[string]any{"hookSpecificOutput": map[string]string{
+		"hookEventName":      "SessionStart",
+		"initialUserMessage": fmt.Sprintf("/agenteur:join %s %s", agents[0].Session, agents[0].ID),
+	}})
 }
 
 type writeErr struct{ error }

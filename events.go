@@ -137,6 +137,24 @@ func (b *Broker) ClaudeAgents(sessionID string, pid int) ([]Agent, error) {
 	return out, rows.Err()
 }
 
+// CodexAgents returns the agents registered with a Codex thread.
+func (b *Broker) CodexAgents() ([]Agent, error) {
+	rows, err := b.db.Query(`SELECT session,id,thread_id,COALESCE(socket,'') FROM agents WHERE COALESCE(thread_id,'')<>''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Agent
+	for rows.Next() {
+		var a Agent
+		if err = rows.Scan(&a.Session, &a.ID, &a.ThreadID, &a.Socket); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // WatcherSeen records that agenteur watch is running for a Claude session.
 func (b *Broker) WatcherSeen(sessionID string, pid int) error {
 	_, err := b.db.Exec(`INSERT INTO watchers(claude_session,claude_pid,seen) VALUES(?,?,?) ON CONFLICT(claude_session,claude_pid) DO UPDATE SET seen=excluded.seen`, sessionID, pid, time.Now().Unix())

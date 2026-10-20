@@ -19,6 +19,13 @@ import (
 // Calls whose method is in failing are answered with that error message.
 func fakeCodex(t *testing.T, reject bool, failing ...string) (string, <-chan map[string]any) {
 	t.Helper()
+	return fakeCodexResults(t, nil, reject, failing...)
+}
+
+// fakeCodexResults is fakeCodex answering the methods in results with those
+// results.
+func fakeCodexResults(t *testing.T, results map[string]any, reject bool, failing ...string) (string, <-chan map[string]any) {
+	t.Helper()
 	dir, err := os.MkdirTemp("", "agenteur-ws-")
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +80,11 @@ func fakeCodex(t *testing.T, reject bool, failing ...string) (string, <-chan map
 				return
 			}
 		}
-		write(map[string]any{"id": 2, "result": map[string]any{}})
+		result, ok := results[fmt.Sprint(call["method"])]
+		if !ok {
+			result = map[string]any{}
+		}
+		write(map[string]any{"id": 2, "result": result})
 	})}
 	go srv.Serve(ln)
 	t.Cleanup(func() { srv.Close(); os.RemoveAll(dir) })
@@ -227,5 +238,47 @@ func TestCallerThreadComesFromToolCallMeta(t *testing.T) {
 	}
 	if got := callerThread(empty, "claude"); got != "" {
 		t.Fatalf("claude agent got thread %q", got)
+	}
+}
+
+// A resumed Codex thread has a new MCP process that has not joined; events
+// still reach it while the thread is open, and wait while it is not.
+func TestCodexOpenThreadsGetEvents(t *testing.T) {
+	socket, requests := fakeCodexResults(t, map[string]any{"thread/loaded/list": map[string]any{"data": []string{"open-thread"}, "nextCursor": nil}}, false)
+	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
+	defer b.db.Close()
+	for _, a := range []Agent{{Session: "s", ID: "open", ThreadID: "open-thread", Socket: socket}, {Session: "s", ID: "closed", ThreadID: "closed-thread", Socket: socket}, {Session: "s", ID: "claude"}} {
+		if err := b.Join(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, to := range []string{"open", "closed"} {
+		if err := b.Send(Message{Session: "s", From: "claude", To: to, Text: "hi " + to}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := deliverOpenThreads(context.Background(), b); err != nil {
+		t.Fatal(err)
+	}
+	if m := call(requests)["method"]; m != "thread/loaded/list" {
+		t.Fatal(m)
+	}
+	var texts []string
+	for len(requests) > 0 {
+		c := call(requests)
+		p := c["params"].(map[string]any)
+		if c["method"] != "thread/queue/add" || p["threadId"] != "open-thread" {
+			t.Fatal(c)
+		}
+		texts = append(texts, p["input"].([]any)[0].(map[string]any)["text"].(string))
+	}
+	if len(texts) == 0 || !strings.Contains(texts[len(texts)-1], `from claude: "hi open"`) {
+		t.Fatal(texts)
+	}
+	if events, err := b.PendingEvents("s", "open"); err != nil || len(events) != 0 {
+		t.Fatalf("open thread kept events: %v %v", events, err)
+	}
+	if events, err := b.PendingEvents("s", "closed"); err != nil || len(events) == 0 {
+		t.Fatalf("closed thread's events not kept: %v %v", events, err)
 	}
 }

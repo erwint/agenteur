@@ -259,3 +259,26 @@ func TestListAgentsGroupsSessionsAndShowsMonitors(t *testing.T) {
 		t.Fatalf("%v %v", none, err)
 	}
 }
+
+func TestSessionStartRejoinsResumedSession(t *testing.T) {
+	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
+	if err := b.Join(Agent{Session: "s", ID: "me", ClaudeSession: "sid", ClaudePID: 7}); err != nil {
+		t.Fatal(err)
+	}
+	hook := func(input string) string {
+		var out bytes.Buffer
+		if err := sessionStart(b, strings.NewReader(input), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	if got := hook(`{"session_id":"sid","source":"resume"}`); !strings.Contains(got, `"hookEventName":"SessionStart"`) || !strings.Contains(got, `"initialUserMessage":"/agenteur:join s me"`) {
+		t.Fatalf("%q", got)
+	}
+	// A new conversation, and one that never joined, are left alone.
+	for _, input := range []string{`{"session_id":"sid","source":"startup"}`, `{"session_id":"other","source":"resume"}`} {
+		if got := hook(input); got != "" {
+			t.Fatalf("%s: %q", input, got)
+		}
+	}
+}

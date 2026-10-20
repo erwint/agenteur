@@ -119,8 +119,14 @@ func main() {
 			os.Exit(1)
 		}
 		return
+	case "session-start":
+		if err := sessionStart(NewBroker(*path), os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "agenteur session-start:", err)
+			os.Exit(1)
+		}
+		return
 	default:
-		fmt.Fprintf(os.Stderr, "agenteur: unknown command %q (commands: watch, version, update)\n", command)
+		fmt.Fprintf(os.Stderr, "agenteur: unknown command %q (commands: watch, session-start, version, update)\n", command)
 		os.Exit(2)
 	}
 	if *checkCodex {
@@ -184,8 +190,11 @@ func main() {
 		}
 		return text(out)
 	})
-	// Push this process's own agent's events into its Codex thread. Claude
-	// sessions receive theirs through the agenteur watch plugin monitor instead.
+	// Push events into Codex threads: this process's own agent's, or, until it
+	// has joined (as after Codex resumes a thread), those of every registered
+	// thread that is open. Claude sessions receive theirs through the agenteur
+	// watch plugin monitor instead.
+	inClaude := os.Getenv("CLAUDE_CODE_SESSION_ID") != ""
 	go func() {
 		var retryAt time.Time
 		backoff := time.Second
@@ -193,10 +202,19 @@ func main() {
 			localMu.RLock()
 			agent := local
 			localMu.RUnlock()
-			if agent.ThreadID == "" || time.Now().Before(retryAt) {
+			if time.Now().Before(retryAt) {
 				continue
 			}
-			if err := deliverCodex(context.Background(), b, agent); err != nil {
+			var err error
+			switch {
+			case agent.ThreadID != "":
+				err = deliverCodex(context.Background(), b, agent)
+			case !inClaude:
+				err = deliverOpenThreads(context.Background(), b)
+			default:
+				continue
+			}
+			if err != nil {
 				fmt.Fprintln(os.Stderr, "agenteur:", err)
 				retryAt = time.Now().Add(backoff)
 				backoff = min(backoff*2, time.Minute)
