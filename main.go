@@ -120,9 +120,13 @@ func main() {
 		}
 		return
 	case "session-start":
-		if err := sessionStart(NewBroker(*path), os.Stdin, os.Stdout); err != nil {
+		wake, err := sessionStart(NewBroker(*path), os.Stdin, os.Stderr)
+		if err != nil {
 			fmt.Fprintln(os.Stderr, "agenteur session-start:", err)
 			os.Exit(1)
+		}
+		if wake {
+			os.Exit(2)
 		}
 		return
 	default:
@@ -195,6 +199,11 @@ func main() {
 	// thread that is open. Claude sessions receive theirs through the agenteur
 	// watch plugin monitor instead.
 	inClaude := os.Getenv("CLAUDE_CODE_SESSION_ID") != ""
+	if !inClaude {
+		// Codex records MCP stderr in its logs, which shows whether a resumed
+		// thread got an agenteur process at all.
+		fmt.Fprintf(os.Stderr, "agenteur %s: delivering events for open Codex threads until this process joins\n", version)
+	}
 	go func() {
 		var retryAt time.Time
 		backoff := time.Second

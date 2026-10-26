@@ -34,29 +34,31 @@ func watch(b *Broker) error {
 	}
 }
 
-// sessionStart runs as the plugin's SessionStart hook. When Claude Code
-// resumes a conversation whose agent is still in a session, it submits the
-// join skill again: a monitor started by a skill does not survive a restart,
-// and invoking the skill starts agenteur watch anew.
-func sessionStart(b *Broker, in io.Reader, out io.Writer) error {
+// sessionStart runs as the plugin's SessionStart hook. A monitor started by a
+// skill does not survive a restart, so when Claude Code resumes a conversation
+// whose agent is still in a session, it asks the agent to invoke the join
+// skill again, which starts agenteur watch anew. The hook is an asyncRewake
+// hook: what it writes to out reaches the model, and wake reports that it
+// should, which the caller signals with exit code 2. Interactive Claude Code
+// ignores a SessionStart initialUserMessage, so that cannot do it.
+func sessionStart(b *Broker, in io.Reader, out io.Writer) (wake bool, err error) {
 	var hook struct {
 		SessionID string `json:"session_id"`
 		Source    string `json:"source"`
 	}
 	if err := json.NewDecoder(in).Decode(&hook); err != nil {
-		return err
+		return false, err
 	}
 	if hook.Source != "resume" || hook.SessionID == "" {
-		return nil
+		return false, nil
 	}
 	agents, err := b.ClaudeAgents(hook.SessionID, 0)
 	if err != nil || len(agents) == 0 {
-		return err
+		return false, err
 	}
-	return json.NewEncoder(out).Encode(map[string]any{"hookSpecificOutput": map[string]string{
-		"hookEventName":      "SessionStart",
-		"initialUserMessage": fmt.Sprintf("/agenteur:join %s %s", agents[0].Session, agents[0].ID),
-	}})
+	a := agents[0]
+	_, err = fmt.Fprintf(out, "This conversation was resumed. Its agent %q is still in agenteur session %q, but the event monitor stopped with the old process, so no messages or task updates reach it. Invoke the agenteur:join skill now with the arguments `%s %s` and no role, which keeps the current one, then tell the user in one line that you rejoined.\n", a.ID, a.Session, a.Session, a.ID)
+	return err == nil, err
 }
 
 type writeErr struct{ error }

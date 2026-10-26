@@ -265,20 +265,21 @@ func TestSessionStartRejoinsResumedSession(t *testing.T) {
 	if err := b.Join(Agent{Session: "s", ID: "me", ClaudeSession: "sid", ClaudePID: 7}); err != nil {
 		t.Fatal(err)
 	}
-	hook := func(input string) string {
+	hook := func(input string) (bool, string) {
 		var out bytes.Buffer
-		if err := sessionStart(b, strings.NewReader(input), &out); err != nil {
+		wake, err := sessionStart(b, strings.NewReader(input), &out)
+		if err != nil {
 			t.Fatal(err)
 		}
-		return out.String()
+		return wake, out.String()
 	}
-	if got := hook(`{"session_id":"sid","source":"resume"}`); !strings.Contains(got, `"hookEventName":"SessionStart"`) || !strings.Contains(got, `"initialUserMessage":"/agenteur:join s me"`) {
-		t.Fatalf("%q", got)
+	if wake, got := hook(`{"session_id":"sid","source":"resume"}`); !wake || !strings.Contains(got, "agenteur:join skill") || !strings.Contains(got, "`s me`") {
+		t.Fatalf("%v %q", wake, got)
 	}
 	// A new conversation, and one that never joined, are left alone.
 	for _, input := range []string{`{"session_id":"sid","source":"startup"}`, `{"session_id":"other","source":"resume"}`} {
-		if got := hook(input); got != "" {
-			t.Fatalf("%s: %q", input, got)
+		if wake, got := hook(input); wake || got != "" {
+			t.Fatalf("%s: %v %q", input, wake, got)
 		}
 	}
 }
