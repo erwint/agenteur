@@ -10,7 +10,7 @@
     "SessionStart": [
       {
         "matcher": "resume",
-        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/run.sh session-start" }]
+        "hooks": [{ "type": "command", "asyncRewake": true, "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/run.sh session-start" }]
       }
     ]
   },
