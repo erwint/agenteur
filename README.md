@@ -137,6 +137,10 @@ Agents are woken for a message addressed to them, a task assigned to them, the o
 
 The Codex agent's own agenteur process delivers its events to the registered thread with `thread/queue/add`. A resumed thread keeps its ID but gets a new agenteur process, which has not joined. Until it does, that process delivers for every registered thread the app-server lists as loaded (`thread/loaded/list`), which are the threads open in some Codex session. An idle thread starts a turn at once, and a busy one runs the event after its current turn. Ephemeral threads have no queue, so events are appended there with `thread/inject_items` and wait for the next turn. If the app-server is unreachable, delivery is retried with backoff, and the data stays available through `inbox`, `await_task`, and `list_session`.
 
+## Status
+
+When events do not arrive, use `/agenteur:status` in Claude Code or `$agenteur:status` in Codex, or run `~/.local/bin/agenteur status` in a shell. It shows the version and database in use, whether the Codex app-server answers and which threads it has open, the agenteur processes delivering Codex events (with their last error), and for each agent whether its monitor or thread is up and how many events wait for it. The skill reports what the conversation's own agenteur process sees; in Codex that process runs inside the app-server daemon, whose environment can differ from your shell's.
+
 To verify a connection without sending a message:
 
 ```bash

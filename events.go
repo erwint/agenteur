@@ -169,6 +169,41 @@ func (b *Broker) Watching(sessionID string, pid int) (bool, error) {
 	return n > 0, err
 }
 
+// A Poller is an MCP process outside Claude Code that delivers Codex events:
+// for its own agent once it has joined, before that for every open thread.
+type Poller struct {
+	PID                            int
+	Session, Agent, Version, Error string
+	Seen                           time.Time
+}
+
+// PollerSeen records a delivery loop's heartbeat and its last error, so
+// status can tell whether anything delivers Codex events.
+func (b *Broker) PollerSeen(p Poller) error {
+	_, err := b.db.Exec(`INSERT INTO pollers(pid,session,agent,version,seen,error) VALUES(?,?,?,?,?,?) ON CONFLICT(pid) DO UPDATE SET session=excluded.session,agent=excluded.agent,version=excluded.version,seen=excluded.seen,error=excluded.error`, p.PID, p.Session, p.Agent, p.Version, time.Now().Unix(), p.Error)
+	return err
+}
+
+// Pollers returns the delivery loops seen since the given time.
+func (b *Broker) Pollers(since time.Time) ([]Poller, error) {
+	rows, err := b.db.Query(`SELECT pid,session,agent,version,seen,error FROM pollers WHERE seen>=? ORDER BY pid`, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Poller
+	for rows.Next() {
+		var p Poller
+		var seen int64
+		if err = rows.Scan(&p.PID, &p.Session, &p.Agent, &p.Version, &seen, &p.Error); err != nil {
+			return nil, err
+		}
+		p.Seen = time.Unix(seen, 0)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // Notice kinds, stored in messages.kind next to ordinary messages.
 const (
 	noticeJoined = "joined"

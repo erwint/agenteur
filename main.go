@@ -119,6 +119,12 @@ func main() {
 			os.Exit(1)
 		}
 		return
+	case "status":
+		if err := status(context.Background(), NewBroker(*path), *path, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "agenteur status:", err)
+			os.Exit(1)
+		}
+		return
 	case "session-start":
 		wake, err := sessionStart(NewBroker(*path), os.Stdin, os.Stderr)
 		if err != nil {
@@ -130,7 +136,7 @@ func main() {
 		}
 		return
 	default:
-		fmt.Fprintf(os.Stderr, "agenteur: unknown command %q (commands: watch, session-start, version, update)\n", command)
+		fmt.Fprintf(os.Stderr, "agenteur: unknown command %q (commands: status, watch, session-start, version, update)\n", command)
 		os.Exit(2)
 	}
 	if *checkCodex {
@@ -203,14 +209,19 @@ func main() {
 		// Codex records MCP stderr in its logs, which shows whether a resumed
 		// thread got an agenteur process at all.
 		fmt.Fprintf(os.Stderr, "agenteur %s: delivering events for open Codex threads until this process joins\n", version)
+		_ = b.PollerSeen(Poller{PID: os.Getpid(), Version: version})
 	}
 	go func() {
 		var retryAt time.Time
+		var lastErr string
 		backoff := time.Second
 		for range time.Tick(time.Second) {
 			localMu.RLock()
 			agent := local
 			localMu.RUnlock()
+			if !inClaude {
+				_ = b.PollerSeen(Poller{PID: os.Getpid(), Session: agent.Session, Agent: agent.ID, Version: version, Error: lastErr})
+			}
 			if time.Now().Before(retryAt) {
 				continue
 			}
@@ -225,10 +236,12 @@ func main() {
 			}
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "agenteur:", err)
+				lastErr = err.Error()
 				retryAt = time.Now().Add(backoff)
 				backoff = min(backoff*2, time.Minute)
 				continue
 			}
+			lastErr = ""
 			backoff = time.Second
 		}
 	}()
@@ -326,6 +339,11 @@ func main() {
 	mcp.AddTool(s, &mcp.Tool{Name: "list_agents", Description: "List the agents in a session with their kind, role and join time, or, without a session, every session and its agents. Works without joining."}, func(_ context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
 		v, err := participants(b, a.Session)
 		return text(map[string]any{"sessions": v, "error": errString(err)})
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "status", Description: "Report how events reach agents, as this agenteur process sees it: its version and database, the Codex app-server and its open threads, the processes delivering Codex events, and for each agent whether its monitor or thread is up and how many events wait for it. Works without joining."}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		var out strings.Builder
+		err := status(ctx, b, *path, &out)
+		return text(map[string]any{"status": out.String(), "error": errString(err)})
 	})
 	if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		fmt.Fprintln(os.Stderr, err)

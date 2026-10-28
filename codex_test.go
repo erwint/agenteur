@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -280,5 +282,42 @@ func TestCodexOpenThreadsGetEvents(t *testing.T) {
 	}
 	if events, err := b.PendingEvents("s", "closed"); err != nil || len(events) == 0 {
 		t.Fatalf("closed thread's events not kept: %v %v", events, err)
+	}
+}
+
+func TestStatusShowsWhatDelivers(t *testing.T) {
+	socket, _ := fakeCodexResults(t, map[string]any{"thread/loaded/list": map[string]any{"data": []string{"open-thread"}, "nextCursor": nil}}, false)
+	t.Setenv("AGENTEUR_CODEX_SOCKET", socket)
+	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
+	defer b.db.Close()
+	for _, a := range []Agent{{Session: "s", ID: "open", Kind: "codex", ThreadID: "open-thread", Socket: socket}, {Session: "s", ID: "closed", Kind: "codex", ThreadID: "closed-thread", Socket: socket}, {Session: "s", ID: "watched", Kind: "claude", ClaudeSession: "sid"}, {Session: "s", ID: "unwatched", Kind: "claude", ClaudeSession: "other"}} {
+		if err := b.Join(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := b.Send(Message{Session: "s", From: "watched", To: "closed", Text: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.WatcherSeen("sid", 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.PollerSeen(Poller{PID: 42, Version: "1.0.0", Error: "boom"}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := status(context.Background(), b, "state.db", &out); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, want := range []string{"1 threads open", "pid 42 (agenteur 1.0.0): not joined, delivers for every open thread; last error: boom", "thread open-thread open", "thread closed-thread closed", "no monitor"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	if !regexp.MustCompile(`watched\s+claude\s+monitor running`).MatchString(got) {
+		t.Errorf("watched should have its monitor:\n%s", got)
+	}
+	if !regexp.MustCompile(`closed\s+codex\s+thread closed-thread closed\s+3 waiting`).MatchString(got) {
+		t.Errorf("closed should have two join notices and the message waiting:\n%s", got)
 	}
 }
