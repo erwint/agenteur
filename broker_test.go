@@ -18,9 +18,14 @@ func TestTaskAwait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() { time.Sleep(20 * time.Millisecond); _ = b.Complete(id, "done") }()
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		_ = b.ClaimTask(id)
+		time.Sleep(300 * time.Millisecond)
+		_ = b.Complete(id, "done")
+	}()
 	got, err := b.Await(context.Background(), id)
-	if err != nil || got.Result != "done" {
+	if err != nil || got.Status != "completed" || got.Result != "done" {
 		t.Fatalf("got %#v, %v", got, err)
 	}
 }

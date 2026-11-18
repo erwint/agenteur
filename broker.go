@@ -228,12 +228,15 @@ func (b *Broker) Messages(session, agent string) ([]Message, error) {
 	}
 	return out, nil
 }
+
+// Await blocks until the task reaches a final status (completed, failed or
+// cancelled). A claimed task is running, not done, so it keeps waiting.
 func (b *Broker) Await(c context.Context, i string) (Task, error) {
 	for {
 		var t Task
 		var cr, up string
 		e := b.db.QueryRowContext(c, `SELECT id,session,sender,recipient,description,status,result,created,updated FROM tasks WHERE id=?`, i).Scan(&t.ID, &t.Session, &t.From, &t.To, &t.Description, &t.Status, &t.Result, &cr, &up)
-		if e == nil && t.Status != "pending" {
+		if e == nil && (t.Status == "completed" || t.Status == "failed" || t.Status == "cancelled") {
 			t.Created, _ = time.Parse(time.RFC3339Nano, cr)
 			t.Updated, _ = time.Parse(time.RFC3339Nano, up)
 			return t, nil
