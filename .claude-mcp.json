@@ -1,7 +1,11 @@
 {
   "mcpServers": {
     "agenteur": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/run.sh"
+      "command": "sh",
+      "args": [
+        "-c",
+        "for r in \"${CLAUDE_PLUGIN_ROOT}\" \"${PLUGIN_ROOT:-}\" . ..; do [ -f \"$r/scripts/run.sh\" ] && exec sh \"$r/scripts/run.sh\"; done; echo \"agenteur: scripts/run.sh not found from $PWD\" >&2; exit 1"
+      ]
     }
   }
 }

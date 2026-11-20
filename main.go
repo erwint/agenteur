@@ -128,8 +128,10 @@ func main() {
 	case "session-start":
 		wake, err := sessionStart(NewBroker(*path), os.Stdin, os.Stderr)
 		if err != nil {
+			// Exit 0 anyway: hosts report any exit but 0 and 2 as a failed
+			// hook, and Codex runs Claude plugin hooks too.
 			fmt.Fprintln(os.Stderr, "agenteur session-start:", err)
-			os.Exit(1)
+			return
 		}
 		if wake {
 			os.Exit(2)
