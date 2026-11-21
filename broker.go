@@ -47,18 +47,39 @@ func NewBroker(path string) *Broker {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		panic(err)
 	}
-	db, err := sql.Open("sqlite", path)
+	// The busy timeout must hold before the first statement: processes that
+	// start together (the MCP server, the monitor and the resume hook) would
+	// otherwise fail switching a database without WAL files to WAL mode.
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(10000)")
 	if err != nil {
 		panic(err)
 	}
 	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS agents(session TEXT,id TEXT,kind TEXT,cwd TEXT,thread_id TEXT,socket TEXT,joined TEXT,PRIMARY KEY(session,id)); CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,session TEXT,sender TEXT,recipient TEXT,text TEXT,created TEXT,acked INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,session TEXT,sender TEXT,recipient TEXT,description TEXT,status TEXT,result TEXT,created TEXT,updated TEXT); CREATE TABLE IF NOT EXISTS leases(session TEXT,path TEXT,agent TEXT,expires TEXT,PRIMARY KEY(session,path)); CREATE TABLE IF NOT EXISTS watchers(claude_session TEXT,claude_pid INTEGER,seen INTEGER,PRIMARY KEY(claude_session,claude_pid)); CREATE TABLE IF NOT EXISTS pollers(pid INTEGER PRIMARY KEY,session TEXT NOT NULL DEFAULT '',agent TEXT NOT NULL DEFAULT '',version TEXT NOT NULL DEFAULT '',seen INTEGER,error TEXT NOT NULL DEFAULT '');`); err != nil {
-		panic(err)
-	}
-	if err = migrate(db); err != nil {
+	err = whileBusy(func() error {
+		if _, err := db.Exec(`PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS agents(session TEXT,id TEXT,kind TEXT,cwd TEXT,thread_id TEXT,socket TEXT,joined TEXT,PRIMARY KEY(session,id)); CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,session TEXT,sender TEXT,recipient TEXT,text TEXT,created TEXT,acked INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,session TEXT,sender TEXT,recipient TEXT,description TEXT,status TEXT,result TEXT,created TEXT,updated TEXT); CREATE TABLE IF NOT EXISTS leases(session TEXT,path TEXT,agent TEXT,expires TEXT,PRIMARY KEY(session,path)); CREATE TABLE IF NOT EXISTS watchers(claude_session TEXT,claude_pid INTEGER,seen INTEGER,PRIMARY KEY(claude_session,claude_pid)); CREATE TABLE IF NOT EXISTS pollers(pid INTEGER PRIMARY KEY,session TEXT NOT NULL DEFAULT '',agent TEXT NOT NULL DEFAULT '',version TEXT NOT NULL DEFAULT '',seen INTEGER,error TEXT NOT NULL DEFAULT '');`); err != nil {
+			return err
+		}
+		return migrate(db)
+	})
+	if err != nil {
 		panic(err)
 	}
 	return &Broker{db: db}
+}
+
+// whileBusy retries f for up to 10s while the database is locked. The busy
+// timeout does not cover every case: SQLite fails at once rather than wait
+// when two connections that both read want to write, as when processes
+// start together on a database that is not yet in WAL mode.
+func whileBusy(f func() error) error {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		err := f()
+		if err == nil || !strings.Contains(err.Error(), "database is locked") || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // migrate adds columns introduced after the first schema. Rows that predate
@@ -73,16 +94,26 @@ func migrate(db *sql.DB) error {
 		{"messages", "notified INTEGER NOT NULL DEFAULT 0", "UPDATE messages SET notified=1"},
 		{"tasks", "notified TEXT NOT NULL DEFAULT ''", "UPDATE tasks SET notified=status"},
 	} {
-		if _, err := db.Exec(`ALTER TABLE ` + m.table + ` ADD COLUMN ` + m.column); err != nil {
+		// One transaction, so a column is never added without its backfill.
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`ALTER TABLE ` + m.table + ` ADD COLUMN ` + m.column); err != nil {
+			tx.Rollback()
 			if strings.Contains(err.Error(), "duplicate column") {
 				continue
 			}
 			return err
 		}
 		if m.backfill != "" {
-			if _, err := db.Exec(m.backfill); err != nil {
+			if _, err := tx.Exec(m.backfill); err != nil {
+				tx.Rollback()
 				return err
 			}
+		}
+		if err := tx.Commit(); err != nil {
+			return err
 		}
 	}
 	return nil
