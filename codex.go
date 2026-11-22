@@ -206,6 +206,14 @@ func deliverOpenThreads(ctx context.Context, b *Broker) error {
 	if err != nil {
 		return err
 	}
+	return deliverIfOpen(ctx, b, agents)
+}
+
+// deliverIfOpen pushes the agents' pending events to their threads, but only
+// to threads their app-server lists as open. A thread that runs in another
+// app-server, such as one a Codex TUI hosts itself, is unknown to that one,
+// and its events are left for the Codex plugin's hooks (codexHook).
+func deliverIfOpen(ctx context.Context, b *Broker, agents []Agent) error {
 	waiting := map[string][]Agent{}
 	for _, a := range agents {
 		events, err := b.PendingEvents(a.Session, a.ID)

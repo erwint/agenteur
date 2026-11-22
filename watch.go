@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -74,6 +75,54 @@ func sessionStart(b *Broker, in io.Reader, wakeOut, contextOut io.Writer) (wake 
 	}
 	msg := fmt.Sprintf("This Codex thread was resumed. It is agent %q in agenteur session %q, but its new agenteur process has not joined, so messages and task updates for it may not arrive. Before anything else in your next turn, invoke the agenteur:join skill with the arguments `%s %s` and no role, which keeps the current one, then tell the user in one line that you rejoined.", a.ID, a.Session, a.Session, a.ID)
 	return false, json.NewEncoder(contextOut).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "SessionStart", "additionalContext": msg}})
+}
+
+// codexHook runs as the Codex plugin's Stop and UserPromptSubmit hooks and
+// hands the thread its agents' pending events. The hooks run inside the Codex
+// process that hosts the thread, so they reach threads the app-server agenteur
+// connects to does not host, such as those a Codex TUI runs in-process. Codex
+// cannot be asked to start a turn from outside such a thread, so an idle one
+// receives its events only at its next turn.
+//
+// event "stop": the events go to wakeOut and cont reports that the turn should
+// continue with them, which the caller signals with exit code 2. event
+// "prompt": they go to contextOut as additionalContext for the user's prompt.
+// Events are claimed first, so they go out once across hooks and processes.
+func codexHook(b *Broker, event string, in io.Reader, wakeOut, contextOut io.Writer) (cont bool, err error) {
+	var hook struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.NewDecoder(in).Decode(&hook); err != nil {
+		return false, err
+	}
+	if hook.SessionID == "" || (event != "stop" && event != "prompt") {
+		return false, nil
+	}
+	agents, err := b.ThreadAgents(hook.SessionID)
+	if err != nil {
+		return false, err
+	}
+	var lines []string
+	for _, a := range agents {
+		events, err := b.PendingEvents(a.Session, a.ID)
+		if err != nil {
+			return false, err
+		}
+		for _, e := range events {
+			if ok, err := b.ClaimEvent(e); err == nil && ok {
+				lines = append(lines, e.Line())
+			}
+		}
+	}
+	if len(lines) == 0 {
+		return false, nil
+	}
+	text := strings.Join(lines, "\n")
+	if event == "stop" {
+		_, err = fmt.Fprintln(wakeOut, text)
+		return err == nil, err
+	}
+	return false, json.NewEncoder(contextOut).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "UserPromptSubmit", "additionalContext": text}})
 }
 
 type writeErr struct{ error }

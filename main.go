@@ -137,8 +137,20 @@ func main() {
 			os.Exit(2)
 		}
 		return
+	case "codex-hook":
+		// Like session-start, it exits 0 on errors: hosts report any other
+		// exit but 2 as a failed hook.
+		cont, err := codexHook(NewBroker(*path), flag.Arg(0), os.Stdin, os.Stderr, os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "agenteur codex-hook:", err)
+			return
+		}
+		if cont {
+			os.Exit(2)
+		}
+		return
 	default:
-		fmt.Fprintf(os.Stderr, "agenteur: unknown command %q (commands: status, watch, session-start, version, update)\n", command)
+		fmt.Fprintf(os.Stderr, "agenteur: unknown command %q (commands: status, watch, session-start, codex-hook, version, update)\n", command)
 		os.Exit(2)
 	}
 	if *checkCodex {
@@ -235,7 +247,7 @@ func main() {
 			var err error
 			switch {
 			case agent.ThreadID != "":
-				err = deliverCodex(context.Background(), b, agent)
+				err = deliverIfOpen(context.Background(), b, []Agent{agent})
 			case !inClaude:
 				err = deliverOpenThreads(context.Background(), b)
 			default:

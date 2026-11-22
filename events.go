@@ -147,6 +147,19 @@ func (b *Broker) ThreadAgent(thread string) (a Agent, ok bool, err error) {
 	return a, err == nil, err
 }
 
+// ThreadAgents returns every agent registered with a Codex thread, which may
+// have joined several sessions.
+func (b *Broker) ThreadAgents(thread string) ([]Agent, error) {
+	agents, err := b.CodexAgents()
+	var out []Agent
+	for _, a := range agents {
+		if a.ThreadID == thread {
+			out = append(out, a)
+		}
+	}
+	return out, err
+}
+
 // CodexAgents returns the agents registered with a Codex thread.
 func (b *Broker) CodexAgents() ([]Agent, error) {
 	rows, err := b.db.Query(`SELECT session,id,thread_id,COALESCE(socket,'') FROM agents WHERE COALESCE(thread_id,'')<>''`)

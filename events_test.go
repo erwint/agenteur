@@ -322,3 +322,59 @@ func TestSessionStartAsksResumedCodexThreadToRejoin(t *testing.T) {
 		t.Fatalf("unknown thread: %v %q", err, context.String())
 	}
 }
+
+// The Codex hooks hand a thread its agents' pending events, in every session
+// the thread joined: Stop continues the turn with them (exit 2, stderr), and
+// UserPromptSubmit adds them to the prompt as additionalContext. Each event
+// goes out once.
+func TestCodexHookDeliversToThread(t *testing.T) {
+	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
+	for _, a := range []Agent{{Session: "a", ID: "cx", ThreadID: "thread-1"}, {Session: "b", ID: "cx", ThreadID: "thread-1"}, {Session: "a", ID: "other", ThreadID: "thread-2"}} {
+		if err := b.Join(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Joining queued notices; deliver them so only the messages below remain.
+	for _, a := range []Agent{{Session: "a", ID: "cx"}, {Session: "b", ID: "cx"}, {Session: "a", ID: "other"}} {
+		events, _ := b.PendingEvents(a.Session, a.ID)
+		for _, e := range events {
+			_, _ = b.ClaimEvent(e)
+		}
+	}
+	hook := func(event string) (bool, string, string) {
+		var wake, context bytes.Buffer
+		cont, err := codexHook(b, event, strings.NewReader(`{"session_id":"thread-1","hook_event_name":"Stop"}`), &wake, &context)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cont, wake.String(), context.String()
+	}
+	for _, m := range []Message{{Session: "a", From: "x", To: "cx", Text: "one"}, {Session: "b", From: "x", To: "cx", Text: "two"}, {Session: "a", From: "x", To: "other", Text: "not mine"}} {
+		if err := b.Send(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cont, wake, context := hook("stop")
+	if !cont || context != "" || !strings.Contains(wake, `"one"`) || !strings.Contains(wake, `"two"`) || strings.Contains(wake, "not mine") {
+		t.Fatalf("stop: %v %q %q", cont, wake, context)
+	}
+	if cont, wake, context := hook("stop"); cont || wake != "" || context != "" {
+		t.Fatalf("delivered twice: %v %q %q", cont, wake, context)
+	}
+	if err := b.Send(Message{Session: "a", From: "x", To: "cx", Text: "three"}); err != nil {
+		t.Fatal(err)
+	}
+	cont, wake, context = hook("prompt")
+	var out struct {
+		HookSpecificOutput struct {
+			HookEventName     string `json:"hookEventName"`
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(context), &out); cont || wake != "" || err != nil || out.HookSpecificOutput.HookEventName != "UserPromptSubmit" || !strings.Contains(out.HookSpecificOutput.AdditionalContext, `"three"`) {
+		t.Fatalf("prompt: %v %q %q %v", cont, wake, context, err)
+	}
+	if events, _ := b.PendingEvents("a", "other"); len(events) != 1 {
+		t.Fatalf("other thread's event: %v", events)
+	}
+}
