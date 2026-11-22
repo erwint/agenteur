@@ -3,7 +3,35 @@
     "SessionStart": [
       {
         "matcher": "resume",
-        "hooks": [{ "type": "command", "timeout": 60, "command": "for r in \"${PLUGIN_ROOT:-}\" \"${CLAUDE_PLUGIN_ROOT:-}\"; do [ -f \"$r/scripts/run.sh\" ] && exec sh \"$r/scripts/run.sh\" session-start; done; exit 0" }]
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 60,
+            "command": "for r in \"${PLUGIN_ROOT:-}\" \"${CLAUDE_PLUGIN_ROOT:-}\"; do [ -f \"$r/scripts/run.sh\" ] && exec sh \"$r/scripts/run.sh\" session-start; done; exit 0"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 30,
+            "command": "for r in \"${PLUGIN_ROOT:-}\" \"${CLAUDE_PLUGIN_ROOT:-}\"; do [ -f \"$r/scripts/run.sh\" ] && exec sh \"$r/scripts/run.sh\" codex-hook prompt; done; exit 0"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 30,
+            "command": "for r in \"${PLUGIN_ROOT:-}\" \"${CLAUDE_PLUGIN_ROOT:-}\"; do [ -f \"$r/scripts/run.sh\" ] && exec sh \"$r/scripts/run.sh\" codex-hook stop; done; exit 0"
+          }
+        ]
       }
     ]
   }
