@@ -46,7 +46,7 @@ From then on, messages and task updates for the agent arrive by themselves. In C
 
 To see who is in a session, use `/agenteur:list [session]` in Claude Code or `$agenteur:list [session]` in Codex. It shows each agent's kind, role and join time, and works without joining. Without a session name it shows the session you joined, or every session if you haven't joined one. For Claude agents it also shows whether their event monitor is running; an agent whose conversation ended without leaving is still listed but no longer receives events.
 
-A resumed conversation keeps its place in the session: after `claude --resume` the agent is woken and joins again by itself, and `codex resume` receives the events that waited while it was closed. Start a new conversation and it joins as a new agent.
+A resumed conversation keeps its place in the session and joins again: after `claude --resume` the agent is woken and rejoins by itself; after `codex resume` the agent rejoins in its next turn, since Codex can't start one for it. Codex asks you once to trust agenteur's resume hook (under `/hooks`); until you do, a resumed Codex agent still receives events while its thread is open, but doesn't rejoin. Start a new conversation and it joins as a new agent.
 
 To leave, use `/agenteur:leave` in Claude Code or `$agenteur:leave` in Codex. The agent is removed from the session, its file leases are released, and nothing more is delivered to it. Its messages and tasks stay in the session's history.
 
@@ -133,7 +133,7 @@ Agents are woken for a message addressed to them, a task assigned to them, the o
 
 **Codex.** The Codex plugin runs `scripts/run-codex.sh`, which verifies the app-server handshake and, when no daemon answers, starts the managed daemon with `codex app-server daemon start` first. Codex must already have its managed standalone installation; agenteur does not install or replace the Codex executable. A custom `AGENTEUR_CODEX_SOCKET` skips daemon startup and verifies that socket instead.
 
-`join_session` registers the calling Codex thread by itself: Codex passes the thread with every tool call. Registration checks that the thread is readable through the app-server; check `codex_registered` and `codex_error` in the join result, and use `register_codex_thread` to register a thread explicitly.
+`join_session` registers the calling Codex thread by itself: Codex passes the thread with every tool call. Registration checks that the thread is readable through the app-server; check `codex_registered` and `codex_error` in the join result, and use `register_codex_thread` to register a thread explicitly. If the app-server agenteur reaches doesn't list the joining thread as open, Codex runs the thread in another app-server, where agenteur can't deliver to it, and the join result carries a `warning` saying so.
 
 The Codex agent's own agenteur process delivers its events to the registered thread with `thread/queue/add`. A resumed thread keeps its ID but gets a new agenteur process, which has not joined. Until it does, that process delivers for every registered thread the app-server lists as loaded (`thread/loaded/list`), which are the threads open in some Codex session. An idle thread starts a turn at once, and a busy one runs the event after its current turn. Ephemeral threads have no queue, so events are appended there with `thread/inject_items` and wait for the next turn. If the app-server is unreachable, delivery is retried with backoff, and the data stays available through `inbox`, `await_task`, and `list_session`.
 

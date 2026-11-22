@@ -321,3 +321,15 @@ func TestStatusShowsWhatDelivers(t *testing.T) {
 		t.Errorf("closed should have two join notices and the message waiting:\n%s", got)
 	}
 }
+
+// A thread that joins while the app-server agenteur reaches does not list it
+// runs in another app-server, so join_session warns that events cannot reach it.
+func TestUnservedThreadWarns(t *testing.T) {
+	socket, _ := fakeCodexResults(t, map[string]any{"thread/loaded/list": map[string]any{"data": []string{"open-thread"}, "nextCursor": nil}}, false)
+	if w := unservedThread(context.Background(), socket, "open-thread"); w != "" {
+		t.Fatalf("open thread warned: %q", w)
+	}
+	if w := unservedThread(context.Background(), socket, "other-thread"); !strings.Contains(w, socket) || !strings.Contains(w, "cannot deliver") {
+		t.Fatalf("unlisted thread: %q", w)
+	}
+}

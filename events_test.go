@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -266,10 +268,13 @@ func TestSessionStartRejoinsResumedSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	hook := func(input string) (bool, string) {
-		var out bytes.Buffer
-		wake, err := sessionStart(b, strings.NewReader(input), &out)
+		var out, context bytes.Buffer
+		wake, err := sessionStart(b, strings.NewReader(input), &out, &context)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if context.Len() != 0 {
+			t.Fatalf("%s: context for a Claude session: %q", input, context.String())
 		}
 		return wake, out.String()
 	}
@@ -281,5 +286,39 @@ func TestSessionStartRejoinsResumedSession(t *testing.T) {
 		if wake, got := hook(input); wake || got != "" {
 			t.Fatalf("%s: %v %q", input, wake, got)
 		}
+	}
+}
+
+// A resumed Codex thread gets the request to rejoin as additionalContext on
+// stdout, since a Codex SessionStart hook cannot start a turn, and the hook
+// exits 0. It names the agent that joined from the thread last.
+func TestSessionStartAsksResumedCodexThreadToRejoin(t *testing.T) {
+	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
+	for _, a := range []Agent{{Session: "old", ID: "cx", ThreadID: "thread-1"}, {Session: "new", ID: "cx", ThreadID: "thread-1"}} {
+		if err := b.Join(a); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	var wakeOut, context bytes.Buffer
+	wake, err := sessionStart(b, strings.NewReader(`{"session_id":"thread-1","source":"resume"}`), &wakeOut, &context)
+	if err != nil || wake || wakeOut.Len() != 0 {
+		t.Fatalf("%v %v %q", wake, err, wakeOut.String())
+	}
+	var out struct {
+		HookSpecificOutput struct {
+			HookEventName     string `json:"hookEventName"`
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(context.Bytes(), &out); err != nil {
+		t.Fatalf("%v: %q", err, context.String())
+	}
+	if out.HookSpecificOutput.HookEventName != "SessionStart" || !strings.Contains(out.HookSpecificOutput.AdditionalContext, "agenteur:join skill") || !strings.Contains(out.HookSpecificOutput.AdditionalContext, "`new cx`") {
+		t.Fatalf("%+v", out)
+	}
+	context.Reset()
+	if _, err := sessionStart(b, strings.NewReader(`{"session_id":"thread-2","source":"resume"}`), &wakeOut, &context); err != nil || context.Len() != 0 {
+		t.Fatalf("unknown thread: %v %q", err, context.String())
 	}
 }

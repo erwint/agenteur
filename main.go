@@ -126,7 +126,7 @@ func main() {
 		}
 		return
 	case "session-start":
-		wake, err := sessionStart(NewBroker(*path), os.Stdin, os.Stderr)
+		wake, err := sessionStart(NewBroker(*path), os.Stdin, os.Stderr, os.Stdout)
 		if err != nil {
 			// Exit 0 anyway: hosts report any exit but 0 and 2 as a failed
 			// hook, and Codex runs Claude plugin hooks too.
@@ -192,6 +192,11 @@ func main() {
 			out["others"] = peers(b, a.Session, a.Agent)
 			if startedAsCoai() {
 				out["notice"] = switchNotice(agent.Kind)
+			}
+		}
+		if err == nil && agent.ThreadID != "" {
+			if w := unservedThread(ctx, agent.Socket, agent.ThreadID); w != "" {
+				out["warning"] = w
 			}
 		}
 		if err == nil && agent.ClaudeSession != "" {

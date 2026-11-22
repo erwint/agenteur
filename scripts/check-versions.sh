@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 
 # The files the plugins run or read at runtime. Changing any of them changes
 # what users get, so it needs a new plugin version. Keep in step with AGENTS.md.
-PLUGIN_FILES=".claude-plugin/plugin.json .codex-plugin/plugin.json .claude-mcp.json scripts/run.sh scripts/run-codex.sh scripts/requires-agenteur skills"
+PLUGIN_FILES=".claude-plugin/plugin.json .codex-plugin/plugin.json .codex-plugin/hooks.json .claude-mcp.json scripts/run.sh scripts/run-codex.sh scripts/requires-agenteur skills"
 
 fail=0
 error() { echo "check-versions: $*" >&2; fail=1; }

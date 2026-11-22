@@ -137,6 +137,16 @@ func (b *Broker) ClaudeAgents(sessionID string, pid int) ([]Agent, error) {
 	return out, rows.Err()
 }
 
+// ThreadAgent returns the agent that joined most recently from a Codex
+// thread, which may have joined several sessions, or ok false.
+func (b *Broker) ThreadAgent(thread string) (a Agent, ok bool, err error) {
+	err = b.db.QueryRow(`SELECT session,id FROM agents WHERE thread_id=? ORDER BY joined DESC LIMIT 1`, thread).Scan(&a.Session, &a.ID)
+	if err == sql.ErrNoRows {
+		return a, false, nil
+	}
+	return a, err == nil, err
+}
+
 // CodexAgents returns the agents registered with a Codex thread.
 func (b *Broker) CodexAgents() ([]Agent, error) {
 	rows, err := b.db.Query(`SELECT session,id,thread_id,COALESCE(socket,'') FROM agents WHERE COALESCE(thread_id,'')<>''`)
