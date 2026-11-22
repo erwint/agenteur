@@ -8,6 +8,7 @@
   },
   "license": "MIT",
   "repository": "https://github.com/erwint/agenteur",
+  "hooks": "./.codex-plugin/hooks.json",
   "mcpServers": {
     "agenteur": {
       "command": "sh",
