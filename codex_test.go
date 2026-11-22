@@ -322,22 +322,12 @@ func TestStatusShowsWhatDelivers(t *testing.T) {
 	}
 }
 
-// A thread that joins while the app-server agenteur reaches does not list it
-// runs in another app-server, so join_session warns that events cannot reach it.
-func TestUnservedThreadWarns(t *testing.T) {
-	socket, _ := fakeCodexResults(t, map[string]any{"thread/loaded/list": map[string]any{"data": []string{"open-thread"}, "nextCursor": nil}}, false)
-	if w := unservedThread(context.Background(), socket, "open-thread"); w != "" {
-		t.Fatalf("open thread warned: %q", w)
-	}
-	if w := unservedThread(context.Background(), socket, "other-thread"); !strings.Contains(w, socket) || !strings.Contains(w, "cannot deliver") {
-		t.Fatalf("unlisted thread: %q", w)
-	}
-}
-
-// A joined Codex process delivers its own agent's events only while its
-// app-server lists the thread; otherwise they wait for the Codex hooks.
-func TestJoinedDeliveryNeedsOpenThread(t *testing.T) {
-	socket, requests := fakeCodexResults(t, map[string]any{"thread/loaded/list": map[string]any{"data": []string{"other-thread"}, "nextCursor": nil}}, false)
+// A joined Codex process queues its own agent's events even when the
+// app-server it reaches does not list the thread: Codex keeps queued
+// submissions with the thread, and the process that hosts it, such as a TUI
+// running its threads in-process, picks them up.
+func TestJoinedDeliveryQueuesUnlistedThread(t *testing.T) {
+	socket, requests := fakeCodexResults(t, map[string]any{"thread/queue/add": map[string]any{}}, false)
 	b := NewBroker(filepath.Join(t.TempDir(), "state.db"))
 	defer b.db.Close()
 	me := Agent{Session: "s", ID: "me", ThreadID: "my-thread", Socket: socket}
@@ -347,16 +337,13 @@ func TestJoinedDeliveryNeedsOpenThread(t *testing.T) {
 	if err := b.Send(Message{Session: "s", From: "x", To: "me", Text: "hi"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := deliverIfOpen(context.Background(), b, []Agent{me}); err != nil {
+	if err := deliverCodex(context.Background(), b, me); err != nil {
 		t.Fatal(err)
 	}
-	if m := call(requests)["method"]; m != "thread/loaded/list" {
-		t.Fatal(m)
+	if c := call(requests); c["method"] != "thread/queue/add" {
+		t.Fatal(c)
 	}
-	if len(requests) != 0 {
-		t.Fatalf("queued into a thread the app-server does not host: %v", call(requests))
-	}
-	if events, err := b.PendingEvents("s", "me"); err != nil || len(events) != 1 {
-		t.Fatalf("event not kept for the hooks: %v %v", events, err)
+	if events, err := b.PendingEvents("s", "me"); err != nil || len(events) != 0 {
+		t.Fatalf("event still pending: %v %v", events, err)
 	}
 }

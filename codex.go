@@ -108,18 +108,6 @@ func checkCodexThread(ctx context.Context, socket, thread string) error {
 	return codexCall(ctx, socket, "thread/read", map[string]any{"threadId": thread})
 }
 
-// unservedThread explains why events cannot reach a thread that joins while
-// the app-server agenteur reaches does not list it as open. A thread calling
-// join_session is running, so the only reason it is not listed is that Codex
-// runs it in another app-server, where thread/queue/add cannot reach it.
-func unservedThread(ctx context.Context, socket, thread string) string {
-	loaded, err := loadedThreads(ctx, socket)
-	if err != nil || loaded[thread] {
-		return ""
-	}
-	return fmt.Sprintf("The Codex app-server at %s does not list this thread as open, so Codex runs it in another app-server and agenteur cannot deliver messages and task updates to it. Tell the user, and check inbox yourself until that is resolved.", codexSocket(socket))
-}
-
 func injectCodex(ctx context.Context, socket, thread, message string) error {
 	if thread == "" {
 		return fmt.Errorf("Codex thread ID is required")
@@ -210,9 +198,10 @@ func deliverOpenThreads(ctx context.Context, b *Broker) error {
 }
 
 // deliverIfOpen pushes the agents' pending events to their threads, but only
-// to threads their app-server lists as open. A thread that runs in another
-// app-server, such as one a Codex TUI hosts itself, is unknown to that one,
-// and its events are left for the Codex plugin's hooks (codexHook).
+// to threads their app-server lists as open, so that a process which has not
+// joined leaves alone the threads of conversations that have ended. A thread
+// that a Codex TUI hosts in-process is not listed; once it has joined, its own
+// process delivers to it, and until then the Codex plugin's hooks do.
 func deliverIfOpen(ctx context.Context, b *Broker, agents []Agent) error {
 	waiting := map[string][]Agent{}
 	for _, a := range agents {

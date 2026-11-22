@@ -206,11 +206,6 @@ func main() {
 				out["notice"] = switchNotice(agent.Kind)
 			}
 		}
-		if err == nil && agent.ThreadID != "" {
-			if w := unservedThread(ctx, agent.Socket, agent.ThreadID); w != "" {
-				out["warning"] = w
-			}
-		}
 		if err == nil && agent.ClaudeSession != "" {
 			out["events_monitor"] = awaitWatcher(ctx, b, agent.ClaudeSession, agent.ClaudePID)
 			if out["events_monitor"] == false {
@@ -247,7 +242,7 @@ func main() {
 			var err error
 			switch {
 			case agent.ThreadID != "":
-				err = deliverIfOpen(context.Background(), b, []Agent{agent})
+				err = deliverCodex(context.Background(), b, agent)
 			case !inClaude:
 				err = deliverOpenThreads(context.Background(), b)
 			default:
